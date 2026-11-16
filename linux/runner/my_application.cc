@@ -22,8 +22,7 @@ static void my_application_activate(GApplication* application) {
 
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
-  gtk_window_set_default_size(window, 960, 520);
-  gtk_window_set_position(window, GTK_WIN_POS_CENTER);
+  gtk_window_set_default_size(window, 860, 540);
 
   // If you want to use a header bar, uncomment the following lines.
   // Header bars are commonly used in GNOME based desktop environments and

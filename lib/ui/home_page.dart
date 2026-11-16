@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../core/fx200_constants.dart';
 import '../models/nam_model.dart';
+import '../services/fx200_protocol.dart';
 import '../services/usb_transport.dart';
 
 class Fx200HomePage extends StatefulWidget {
@@ -16,6 +17,7 @@ class _Fx200HomePageState extends State<Fx200HomePage> {
   final TextEditingController _namJsonController = TextEditingController();
 
   UsbScanResult? _scanResult;
+  HidExchangeResult? _hidResult;
   NamModel? _parsedNam;
   String? _namParseError;
   int _selectedModuleIndex = 2; // AMP (NAM A2)
@@ -58,6 +60,13 @@ class _Fx200HomePageState extends State<Fx200HomePage> {
     });
   }
 
+  void _probeHid() {
+    final result = _usb.sendAndReceiveHid(<int>[Fx200Protocol.opCmdE0]);
+    setState(() {
+      _hidResult = result;
+    });
+  }
+
   void _parseNamJson() {
     try {
       final parsed = NamModel.fromJsonString(_namJsonController.text);
@@ -84,13 +93,14 @@ class _Fx200HomePageState extends State<Fx200HomePage> {
 
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: 48,
         title: const Text('FX200 Studio · NAM A2'),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: FilledButton.icon(
               onPressed: _scanUsb,
-              icon: const Icon(Icons.usb),
+              icon: const Icon(Icons.usb, size: 18),
               label: const Text('Scan FX200 USB'),
             ),
           ),
@@ -98,10 +108,10 @@ class _Fx200HomePageState extends State<Fx200HomePage> {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final isWide = constraints.maxWidth >= 820;
+          final isWide = constraints.maxWidth >= 760;
           if (isWide) {
             return SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -110,27 +120,24 @@ class _Fx200HomePageState extends State<Fx200HomePage> {
                     child: Column(
                       children: [
                         _buildUsbCard(colorScheme),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 10),
                         _buildSignalChainCard(colorScheme),
                       ],
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    flex: 6,
-                    child: _buildNamInspectorCard(colorScheme),
-                  ),
+                  const SizedBox(width: 12),
+                  Expanded(flex: 6, child: _buildNamInspectorCard(colorScheme)),
                 ],
               ),
             );
           }
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             children: [
               _buildUsbCard(colorScheme),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               _buildSignalChainCard(colorScheme),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               _buildNamInspectorCard(colorScheme),
             ],
           );
@@ -141,7 +148,9 @@ class _Fx200HomePageState extends State<Fx200HomePage> {
 
   Widget _buildUsbCard(ColorScheme colorScheme) {
     final scan = _scanResult;
-    String statusText = 'Not scanned yet. Connect FX200 via USB-C and click "Scan FX200 USB".';
+    final hid = _hidResult;
+    String statusText =
+        'Not scanned yet. Connect FX200 via USB-C and click "Scan FX200 USB".';
     if (scan != null) {
       if (scan.errorMessage != null) {
         statusText = 'USB error: ${scan.errorMessage}';
@@ -150,7 +159,9 @@ class _Fx200HomePageState extends State<Fx200HomePage> {
             'No devices found with VID 0x${Fx200Constants.usbVendorId.toRadixString(16).padLeft(4, '0')}.';
       } else {
         final summary = scan.devices
-            .map((d) => '${d.hexVidPid} (bcd 0x${d.bcdDevice.toRadixString(16)})')
+            .map(
+              (d) => '${d.hexVidPid} (bcd 0x${d.bcdDevice.toRadixString(16)})',
+            )
             .join(', ');
         statusText = 'Detected: $summary';
       }
@@ -158,27 +169,43 @@ class _Fx200HomePageState extends State<Fx200HomePage> {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(Icons.cable, color: colorScheme.primary),
+                Icon(Icons.cable, color: colorScheme.primary, size: 18),
                 const SizedBox(width: 8),
-                Text(
-                  'USB Hardware Connection (libusb-1.0)',
-                  style: Theme.of(context).textTheme.titleMedium,
+                Expanded(
+                  child: Text(
+                    'USB Hardware Connection (libusb-1.0)',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+                FilledButton.tonal(
+                  onPressed: _probeHid,
+                  child: const Text('Probe HID'),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            Text(statusText),
             const SizedBox(height: 6),
-            Text(
-              'Target VID 0x0483 · Known PIDs: ${Fx200Constants.usbProductIds.map((e) => '0x${e.toRadixString(16)}').join(', ')}',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
+            Text(statusText, style: Theme.of(context).textTheme.bodySmall),
+            const SizedBox(height: 4),
+            if (hid != null)
+              Text(
+                hid.ok
+                    ? 'HID RX (${hid.crcValid ? "CRC OK" : "raw"}): ${HidExchangeResult.formatHex(hid.rxBytes, maxBytes: 16)}'
+                    : 'HID: ${hid.errorMessage}',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: hid.ok ? colorScheme.primary : colorScheme.error,
+                ),
+              )
+            else
+              Text(
+                'HID IF 3 · EP 0x05 OUT / 0x84 IN · 64B',
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
           ],
         ),
       ),
@@ -188,18 +215,18 @@ class _Fx200HomePageState extends State<Fx200HomePage> {
   Widget _buildSignalChainCard(ColorScheme colorScheme) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               'FX200 Signal Chain (${Fx200Constants.effectModuleCount} Modules)',
-              style: Theme.of(context).textTheme.titleMedium,
+              style: Theme.of(context).textTheme.titleSmall,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
+              spacing: 6,
+              runSpacing: 6,
               children: List<Widget>.generate(
                 Fx200Constants.defaultSignalChain.length,
                 (index) {
@@ -207,6 +234,8 @@ class _Fx200HomePageState extends State<Fx200HomePage> {
                   final selected = index == _selectedModuleIndex;
                   return ChoiceChip(
                     label: Text(label),
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     selected: selected,
                     onSelected: (_) {
                       setState(() {
@@ -217,13 +246,13 @@ class _Fx200HomePageState extends State<Fx200HomePage> {
                 },
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Text(
               'IR Spec: ${Fx200Constants.irSampleRateHz} Hz · '
               '${Fx200Constants.irBitDepth}-bit · '
               '${Fx200Constants.irSamplePoints} pts · '
               '${Fx200Constants.presetPatchCount} presets',
-              style: Theme.of(context).textTheme.bodySmall,
+              style: Theme.of(context).textTheme.labelSmall,
             ),
           ],
         ),
@@ -235,7 +264,7 @@ class _Fx200HomePageState extends State<Fx200HomePage> {
     final nam = _parsedNam;
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -245,7 +274,7 @@ class _Fx200HomePageState extends State<Fx200HomePage> {
                 Expanded(
                   child: Text(
                     'NAM A2 / TONE3000 Capture Inspector',
-                    style: Theme.of(context).textTheme.titleMedium,
+                    style: Theme.of(context).textTheme.titleSmall,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -255,17 +284,18 @@ class _Fx200HomePageState extends State<Fx200HomePage> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             TextField(
               controller: _namJsonController,
-              maxLines: 4,
+              maxLines: 3,
               style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
+                isDense: true,
                 labelText: 'Paste .nam JSON content',
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             if (_namParseError != null)
               Text(
                 'Parse error: $_namParseError',
@@ -273,20 +303,33 @@ class _Fx200HomePageState extends State<Fx200HomePage> {
               )
             else if (nam != null)
               Wrap(
-                spacing: 12,
-                runSpacing: 8,
+                spacing: 8,
+                runSpacing: 6,
                 children: [
-                  Chip(label: Text('Name: ${nam.displayName}')),
-                  Chip(label: Text('Arch: ${nam.architecture}')),
-                  Chip(label: Text('Weights: ${nam.weightCount}')),
                   Chip(
+                    visualDensity: VisualDensity.compact,
+                    label: Text('Name: ${nam.displayName}'),
+                  ),
+                  Chip(
+                    visualDensity: VisualDensity.compact,
+                    label: Text('Arch: ${nam.architecture}'),
+                  ),
+                  Chip(
+                    visualDensity: VisualDensity.compact,
+                    label: Text('Weights: ${nam.weightCount}'),
+                  ),
+                  Chip(
+                    visualDensity: VisualDensity.compact,
                     label: Text(
                       'Rate: ${nam.sampleRate?.round() ?? 'unspecified'} Hz'
                       '${nam.needsSampleRateConversion ? ' (resample -> 44.1k)' : ''}',
                     ),
                   ),
                   Chip(
-                    label: Text('M7 Budget: ${nam.dspCompatibility.name.toUpperCase()}'),
+                    visualDensity: VisualDensity.compact,
+                    label: Text(
+                      'M7 Budget: ${nam.dspCompatibility.name.toUpperCase()}',
+                    ),
                   ),
                 ],
               ),
