@@ -57,11 +57,15 @@ class SignalChainView extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(
-                'SIGNAL CHAIN',
-                style: Theme.of(context).textTheme.labelSmall,
+              Expanded(
+                child: Text(
+                  'SIGNAL CHAIN',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
               InkWell(
                 onTap: onToggleParallelSplit,
                 borderRadius: BorderRadius.circular(6),

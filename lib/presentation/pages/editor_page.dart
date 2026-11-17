@@ -9,6 +9,7 @@ import '../widgets/editor_bottom_bar.dart';
 import '../widgets/editor_top_bar.dart';
 import '../widgets/model_browser.dart';
 import '../widgets/parameter_panel.dart';
+import '../widgets/preset_sidebar.dart';
 import '../widgets/signal_chain_view.dart';
 
 /// Main hardware-style Multi-FX Editor screen.
@@ -60,6 +61,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
           _ModeSwitcherBar(
             showHardware: false,
             isUsbConnected: state.isHardwareConnected,
+            isBusy: state.isConnectingHardware || state.isSyncingPresets,
             usbStatus: state.hardwareStatus,
             onToggleUsb: notifier.toggleHardwareConnection,
             onToggle: () => setState(() => _showHardwareStudio = true),
@@ -77,11 +79,25 @@ class _EditorPageState extends ConsumerState<EditorPage> {
             onRedo: notifier.redo,
             onSave: notifier.saveCurrentPreset,
             onToggleBrowser: notifier.toggleBrowser,
+            isPresetSidebarOpen: state.isPresetSidebarOpen,
+            onTogglePresetSidebar: notifier.togglePresetSidebar,
           ),
           Expanded(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                AnimatedSize(
+                  duration: ext.transitionDuration,
+                  curve: Curves.easeOutCubic,
+                  child: state.isPresetSidebarOpen
+                      ? PresetSidebar(
+                          activePatchNumber: preset.patchNumber,
+                          presetNames: state.presetNames,
+                          isSyncing: state.isSyncingPresets,
+                          onSelectPreset: notifier.loadPreset,
+                        )
+                      : const SizedBox.shrink(),
+                ),
                 Expanded(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(14),
@@ -180,10 +196,12 @@ class _ModeSwitcherBar extends StatelessWidget {
     required this.usbStatus,
     required this.onToggleUsb,
     required this.onToggle,
+    this.isBusy = false,
   });
 
   final bool showHardware;
   final bool isUsbConnected;
+  final bool isBusy;
   final String usbStatus;
   final VoidCallback onToggleUsb;
   final VoidCallback onToggle;
@@ -224,12 +242,24 @@ class _ModeSwitcherBar extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      Icons.usb,
-                      size: 13,
-                      color: isUsbConnected ? ampColor : ext.textMuted,
-                    ),
-                    const SizedBox(width: 4),
+                    if (isBusy)
+                      SizedBox(
+                        width: 11,
+                        height: 11,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.8,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            isUsbConnected ? ampColor : ext.textPrimary,
+                          ),
+                        ),
+                      )
+                    else
+                      Icon(
+                        Icons.usb,
+                        size: 13,
+                        color: isUsbConnected ? ampColor : ext.textMuted,
+                      ),
+                    const SizedBox(width: 5),
                     Text(
                       usbStatus,
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(

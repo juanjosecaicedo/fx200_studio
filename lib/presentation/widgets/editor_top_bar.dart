@@ -20,6 +20,8 @@ class EditorTopBar extends StatefulWidget {
     required this.onRedo,
     required this.onSave,
     required this.onToggleBrowser,
+    this.isPresetSidebarOpen = true,
+    this.onTogglePresetSidebar,
   });
 
   final Preset preset;
@@ -27,6 +29,7 @@ class EditorTopBar extends StatefulWidget {
   final bool canUndo;
   final bool canRedo;
   final bool isBrowserOpen;
+  final bool isPresetSidebarOpen;
   final ValueChanged<int> onSelectPatch;
   final ValueChanged<String> onRenamePreset;
   final ValueChanged<String> onSelectScene;
@@ -34,6 +37,7 @@ class EditorTopBar extends StatefulWidget {
   final VoidCallback onRedo;
   final VoidCallback onSave;
   final VoidCallback onToggleBrowser;
+  final VoidCallback? onTogglePresetSidebar;
 
   @override
   State<EditorTopBar> createState() => _EditorTopBarState();
@@ -235,6 +239,17 @@ class _EditorTopBarState extends State<EditorTopBar> {
             icon: const Icon(Icons.save_outlined, size: 16),
             label: const Text('SAVE'),
           ),
+          if (widget.onTogglePresetSidebar != null)
+            OutlinedButton.icon(
+              onPressed: widget.onTogglePresetSidebar,
+              icon: Icon(
+                widget.isPresetSidebarOpen
+                    ? Icons.list_alt
+                    : Icons.list_alt_outlined,
+                size: 16,
+              ),
+              label: const Text('PRESETS'),
+            ),
           OutlinedButton.icon(
             onPressed: widget.onToggleBrowser,
             icon: Icon(

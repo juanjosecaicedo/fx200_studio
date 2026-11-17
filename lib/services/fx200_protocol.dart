@@ -112,6 +112,7 @@ class Fx200Protocol {
   static const int opCmdA3 = 0xa3; // len 0x0b
   static const int opCmdA4 = 0xa4; // len 0x06
   static const int opPresetList = 0xa5; // multi-packet preset/IR list
+  static const int opPresetDump86 = 0x86; // single-preset dump (same layout as 0xA5)
   static const int opPresetRead = 0xa6; // len 0x11
   static const int opPresetSave = 0xa8; // len 0x12 (index + 16-byte ASCII name)
   static const int opCmdAe = 0xae; // len 0x05
@@ -181,7 +182,7 @@ class Fx200Protocol {
     int opcode,
     List<int> body,
   ) {
-    if (opcode != opPresetList ||
+    if ((opcode != opPresetList && opcode != opPresetDump86) ||
         body.length < 20 ||
         body[0] != 0x80 ||
         body[3] != 0x00) {
@@ -251,6 +252,23 @@ class Fx200Protocol {
     }
     return buildHidPacket(
       payload: <int>[opCmdA0, ...order, ...enabled],
+    );
+  }
+
+  /// Decodes a `0xA4` patch output level frame (`body[4]`, 0.5 dB steps: `120 == 0.0 dB`, `0..132` => `-60..+6 dB`).
+  static double? decodeOutputLevelFrame(int opcode, List<int> body) {
+    if (opcode != opCmdA4 || body.length < 5) {
+      return null;
+    }
+    final raw = (body[4] & 0xff).clamp(0, 132);
+    return (raw / 2.0) - 60.0;
+  }
+
+  /// Builds a `0xA4` patch output level HID packet (`-60.0 .. +6.0 dB`).
+  static Uint8List buildOutputLevelPacket(double db) {
+    final raw = ((db.clamp(-60.0, 6.0) + 60.0) * 2.0).round().clamp(0, 132);
+    return buildHidPacket(
+      payload: <int>[opCmdA4, 0x01, 0x00, 0x80, 0x00, raw],
     );
   }
 

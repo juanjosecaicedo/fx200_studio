@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:isolate';
+import 'dart:typed_data';
 
 import '../core/fx200_constants.dart';
 import '../domain/entities/preset.dart';
@@ -6,19 +8,20 @@ import 'fx200_protocol.dart';
 import 'usb_transport.dart';
 
 /// Bridges live FX200 USB HID I/O (`EP 0x05 OUT` / `EP 0x84 IN`) with the
-/// Clean Architecture editor state.
+/// Clean Architecture editor state using a dedicated background Isolate so
+/// high-rate `0xA5` bursts never drop USB packets.
 class Fx200HardwareSync {
-  Fx200HardwareSync({Fx200UsbTransport? transport})
-    : _transport = transport ?? Fx200UsbTransport();
+  Fx200HardwareSync();
 
-  final Fx200UsbTransport _transport;
-  final Fx200FrameAssembler _assembler = Fx200FrameAssembler();
   final Map<int, Fx200ModuleState> _lastModules = <int, Fx200ModuleState>{};
   final Map<int, DateTime> _lastWriteTime = <int, DateTime>{};
-  Fx200HidSession? _session;
-  Timer? _pollTimer;
 
-  bool get isConnected => _session?.isOpen ?? false;
+  Isolate? _usbIsolate;
+  ReceivePort? _rxPort;
+  SendPort? _txPort;
+  bool _connected = false;
+
+  bool get isConnected => _connected;
 
   static EffectCategory categoryForSlot(int slotIndex) {
     switch (slotIndex) {
@@ -70,101 +73,153 @@ class Fx200HardwareSync {
     }
   }
 
-  ({bool ok, String message}) connect({
+  Future<({bool ok, String message})> connect({
     required void Function(Fx200ModuleState module) onModuleReceived,
-    required void Function(int index, String name) onPresetNameReceived,
+    required void Function(Map<int, String> presetNames) onPresetNamesReceived,
     void Function(int activePatch)? onActivePatchReceived,
     void Function(List<int> order1Based, List<bool> enabledStates)?
         onChainOrderReceived,
-  }) {
-    if (isConnected) {
-      return (ok: true, message: 'FX200 HID already connected.');
+    void Function(double outputLevelDb)? onOutputLevelReceived,
+    void Function()? onPresetSyncComplete,
+  }) async {
+    if (_connected) {
+      return (ok: true, message: 'FX200 LIVE (IF 3)');
     }
 
-    final res = _transport.openHidSession();
-    if (res.session == null) {
-      return (ok: false, message: res.error ?? 'Failed to open FX200 HID.');
-    }
+    final rxPort = ReceivePort();
+    _rxPort = rxPort;
+    final initCompleter = Completer<({bool ok, String message})>();
+    Timer? syncIdleTimer;
 
-    _session = res.session;
-    _assembler.reset();
-    _pollTimer = Timer.periodic(const Duration(milliseconds: 25), (_) {
-      final session = _session;
-      if (session == null || !session.isOpen) return;
-      for (var i = 0; i < 16; i++) {
-        final polled = session.pollIn(timeoutMs: 5);
-        if (polled.data == null) break;
-        final frames = _assembler.feedPacket(polled.data!);
-        for (final frame in frames) {
-          final mod = Fx200Protocol.decodeModuleFrame(frame.opcode, frame.body);
-          if (mod != null) {
-            _lastModules[mod.slotIndex] = mod;
-            final lastWrite = _lastWriteTime[mod.slotIndex];
-            if (lastWrite == null ||
-                DateTime.now().difference(lastWrite).inMilliseconds > 150) {
-              onModuleReceived(mod);
-            }
-            continue;
+    rxPort.listen((dynamic message) {
+      if (message is Map<String, Object?>) {
+        final type = message['type'] as String?;
+        if (type == 'ready') {
+          final ok = message['ok'] as bool? ?? false;
+          final msg = message['message'] as String? ?? 'USB ERROR';
+          if (ok) {
+            _txPort = message['txPort'] as SendPort?;
+            _connected = true;
+          } else {
+            disconnect();
           }
-          final dump = Fx200Protocol.decodePresetDumpFrame(
-            frame.opcode,
-            frame.body,
+          if (!initCompleter.isCompleted) {
+            initCompleter.complete((ok: ok, message: msg));
+          }
+          return;
+        }
+        if (type == 'frame') {
+          final opcode = message['opcode'] as int;
+          final body = message['body'] as Uint8List;
+          _handleFrame(
+            opcode: opcode,
+            body: body,
+            onModuleReceived: onModuleReceived,
+            onPresetNamesReceived: onPresetNamesReceived,
+            onActivePatchReceived: onActivePatchReceived,
+            onChainOrderReceived: onChainOrderReceived,
+            onOutputLevelReceived: onOutputLevelReceived,
+            onPresetDumpFrame: () {
+              syncIdleTimer?.cancel();
+              syncIdleTimer = Timer(const Duration(milliseconds: 600), () {
+                onPresetSyncComplete?.call();
+              });
+            },
           );
-          if (dump != null && dump.name.isNotEmpty) {
-            onPresetNameReceived(dump.index, dump.name);
-            continue;
+          return;
+        }
+        if (type == 'names') {
+          final names = (message['names'] as Map).cast<int, String>();
+          if (names.isNotEmpty) {
+            onPresetNamesReceived(names);
+            syncIdleTimer?.cancel();
+            syncIdleTimer = Timer(const Duration(milliseconds: 600), () {
+              onPresetSyncComplete?.call();
+            });
           }
-          final saved = Fx200Protocol.decodePresetSaveFrame(
-            frame.opcode,
-            frame.body,
-          );
-          if (saved != null && saved.name.isNotEmpty) {
-            onPresetNameReceived(saved.index, saved.name);
-            continue;
-          }
-          final chain = Fx200Protocol.decodeChainOrderFrame(
-            frame.opcode,
-            frame.body,
-          );
-          if (chain != null && onChainOrderReceived != null) {
-            onChainOrderReceived(chain.order1Based, chain.enabledStates);
-            continue;
-          }
-          if (frame.opcode == Fx200Protocol.opCmdBb &&
-              frame.body.length >= 2 &&
-              onActivePatchReceived != null) {
-            final patch = ((frame.body[0] & 0xff) << 8) | (frame.body[1] & 0xff);
-            if (patch >= 0 && patch < Fx200Constants.presetPatchCount) {
-              onActivePatchReceived(patch);
-            }
-          }
+          return;
         }
       }
     });
 
-    return (ok: true, message: 'FX200 LIVE (IF 3)');
+    _usbIsolate = await Isolate.spawn(_usbWorkerEntry, rxPort.sendPort);
+    return initCompleter.future;
+  }
+
+  void _handleFrame({
+    required int opcode,
+    required Uint8List body,
+    required void Function(Fx200ModuleState module) onModuleReceived,
+    required void Function(Map<int, String> presetNames) onPresetNamesReceived,
+    void Function(int activePatch)? onActivePatchReceived,
+    void Function(List<int> order1Based, List<bool> enabledStates)?
+        onChainOrderReceived,
+    void Function(double outputLevelDb)? onOutputLevelReceived,
+    void Function()? onPresetDumpFrame,
+  }) {
+    final mod = Fx200Protocol.decodeModuleFrame(opcode, body);
+    if (mod != null) {
+      _lastModules[mod.slotIndex] = mod;
+      final lastWrite = _lastWriteTime[mod.slotIndex];
+      if (lastWrite == null ||
+          DateTime.now().difference(lastWrite).inMilliseconds > 150) {
+        onModuleReceived(mod);
+      }
+      return;
+    }
+
+    final saved = Fx200Protocol.decodePresetSaveFrame(opcode, body);
+    if (saved != null && saved.name.isNotEmpty) {
+      onPresetNamesReceived(<int, String>{saved.index: saved.name});
+      return;
+    }
+
+    final dump = Fx200Protocol.decodePresetDumpFrame(opcode, body);
+    if (dump != null && dump.name.isNotEmpty) {
+      onPresetNamesReceived(<int, String>{dump.index: dump.name});
+      onPresetDumpFrame?.call();
+      return;
+    }
+
+    final chain = Fx200Protocol.decodeChainOrderFrame(opcode, body);
+    if (chain != null && onChainOrderReceived != null) {
+      onChainOrderReceived(chain.order1Based, chain.enabledStates);
+      return;
+    }
+
+    final outDb = Fx200Protocol.decodeOutputLevelFrame(opcode, body);
+    if (outDb != null && onOutputLevelReceived != null) {
+      onOutputLevelReceived(outDb);
+      return;
+    }
+
+    if (opcode == Fx200Protocol.opCmdBb &&
+        body.length >= 2 &&
+        onActivePatchReceived != null) {
+      final patch = ((body[0] & 0xff) << 8) | (body[1] & 0xff);
+      if (patch >= 0 && patch < Fx200Constants.presetPatchCount) {
+        onActivePatchReceived(patch);
+      }
+    }
   }
 
   void requestPresetList() {
-    final session = _session;
-    if (session == null || !session.isOpen) return;
-    session.sendRaw(
+    if (!_connected) return;
+    _txPort?.send(
       Fx200Protocol.buildHidPacket(
-        payload: const <int>[Fx200Protocol.opProbe00],
+        payload: const <int>[Fx200Protocol.opCmdE0],
       ),
     );
   }
 
   void requestPreset(int patchNumber) {
-    final session = _session;
-    if (session == null || !session.isOpen) return;
+    if (!_connected) return;
     final clamped = patchNumber.clamp(0, Fx200Constants.presetPatchCount - 1);
-    session.sendRaw(Fx200Protocol.buildPresetReadPacket(clamped));
+    _txPort?.send(Fx200Protocol.buildPresetReadPacket(clamped));
   }
 
   void sendBlockUpdate(EffectBlock block, {bool force = false}) {
-    final session = _session;
-    if (session == null || !session.isOpen) return;
+    if (!_connected) return;
     final slot = slotForCategory(block.category);
     final now = DateTime.now();
     final prevWrite = _lastWriteTime[slot];
@@ -201,18 +256,21 @@ class Fx200HardwareSync {
       params: params,
     );
     _lastModules[slot] = state;
-    session.sendRaw(Fx200Protocol.encodeModuleFrame(state));
+    _txPort?.send(Fx200Protocol.encodeModuleFrame(state));
   }
 
   void sendPresetSave(int patchNumber, String name) {
-    final session = _session;
-    if (session == null || !session.isOpen) return;
-    session.sendRaw(Fx200Protocol.buildPresetSavePacket(patchNumber, name));
+    if (!_connected) return;
+    _txPort?.send(Fx200Protocol.buildPresetSavePacket(patchNumber, name));
+  }
+
+  void sendOutputLevelDb(double db) {
+    if (!_connected) return;
+    _txPort?.send(Fx200Protocol.buildOutputLevelPacket(db));
   }
 
   void sendChainOrder(List<EffectBlock> blocks) {
-    final session = _session;
-    if (session == null || !session.isOpen) return;
+    if (!_connected) return;
     final ordered = List<EffectBlock>.from(blocks)
       ..sort((a, b) {
         final laneCmp = a.laneIndex.compareTo(b.laneIndex);
@@ -234,15 +292,105 @@ class Fx200HardwareSync {
         order1Based.add(id);
       }
     }
-    session.sendRaw(
+    _txPort?.send(
       Fx200Protocol.buildChainOrderPacket(order1Based, enabledBySlot),
     );
   }
 
   void disconnect() {
-    _pollTimer?.cancel();
-    _pollTimer = null;
-    _session?.close();
-    _session = null;
+    _connected = false;
+    _txPort?.send(null);
+    _txPort = null;
+    _rxPort?.close();
+    _rxPort = null;
+    _usbIsolate?.kill(priority: Isolate.immediate);
+    _usbIsolate = null;
   }
+}
+
+Future<void> _usbWorkerEntry(SendPort mainPort) async {
+  final transport = Fx200UsbTransport();
+  final res = transport.openHidSession();
+  final session = res.session;
+  if (session == null) {
+    mainPort.send(<String, Object?>{
+      'type': 'ready',
+      'ok': false,
+      'message': res.error ?? 'Failed to open FX200 HID.',
+    });
+    return;
+  }
+
+  final cmdPort = ReceivePort();
+  var running = true;
+  final outQueue = <Uint8List>[];
+
+  cmdPort.listen((dynamic msg) {
+    if (msg == null) {
+      running = false;
+    } else if (msg is Uint8List) {
+      outQueue.add(msg);
+    }
+  });
+
+  mainPort.send(<String, Object?>{
+    'type': 'ready',
+    'ok': true,
+    'message': 'FX200 LIVE (IF 3)',
+    'txPort': cmdPort.sendPort,
+  });
+
+  final assembler = Fx200FrameAssembler();
+  final pendingNames = <int, String>{};
+  var lastFlush = DateTime.now();
+  var burstCount = 0;
+
+  while (running && session.isOpen) {
+    while (outQueue.isNotEmpty) {
+      final pkt = outQueue.removeAt(0);
+      session.sendRaw(pkt);
+    }
+
+    final polled = session.pollIn(timeoutMs: 8);
+    if (polled.data != null) {
+      burstCount++;
+      final frames = assembler.feedPacket(polled.data!);
+      for (final frame in frames) {
+        final dump = Fx200Protocol.decodePresetDumpFrame(
+          frame.opcode,
+          frame.body,
+        );
+        if (dump != null && dump.name.isNotEmpty) {
+          pendingNames[dump.index] = dump.name;
+          continue;
+        }
+        mainPort.send(<String, Object?>{
+          'type': 'frame',
+          'opcode': frame.opcode,
+          'body': frame.body,
+        });
+      }
+      if (burstCount >= 24) {
+        burstCount = 0;
+        await Future<void>.delayed(Duration.zero);
+      }
+    } else {
+      burstCount = 0;
+      await Future<void>.delayed(const Duration(milliseconds: 2));
+    }
+
+    if (pendingNames.isNotEmpty &&
+        (pendingNames.length >= 10 ||
+            DateTime.now().difference(lastFlush).inMilliseconds >= 80)) {
+      mainPort.send(<String, Object?>{
+        'type': 'names',
+        'names': Map<int, String>.from(pendingNames),
+      });
+      pendingNames.clear();
+      lastFlush = DateTime.now();
+    }
+  }
+
+  cmdPort.close();
+  session.close();
 }

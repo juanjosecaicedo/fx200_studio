@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
@@ -58,16 +61,44 @@ class EditorNotifier extends Notifier<EditorState> {
       ReorderBlocksUseCase();
 
   final Map<int, String> _hardwarePresetNames = <int, String>{};
+  Timer? _autoConnectTimer;
+  bool _manualDisconnect = false;
 
   @override
   EditorState build() {
-    Future<void>.microtask(() => loadPreset(0));
+    ref.onDispose(() {
+      _autoConnectTimer?.cancel();
+      _autoConnectTimer = null;
+    });
+    Future<void>.microtask(() async {
+      await loadPreset(0);
+      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+        await _tryAutoConnect();
+      }
+    });
     return const EditorState(
       preset: null,
       selectedBlockId: null,
       catalog: <CatalogModel>[],
       isLoading: true,
     );
+  }
+
+  Future<void> _tryAutoConnect() async {
+    if (_manualDisconnect || state.isHardwareConnected || state.isConnectingHardware) {
+      return;
+    }
+    await _connectHardware(silentOnFail: true);
+    if (!state.isHardwareConnected && !_manualDisconnect) {
+      _autoConnectTimer?.cancel();
+      _autoConnectTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+        if (_manualDisconnect || state.isHardwareConnected) {
+          _autoConnectTimer?.cancel();
+          return;
+        }
+        await _connectHardware(silentOnFail: true);
+      });
+    }
   }
 
   Future<void> loadPreset(int patchNumber) async {
@@ -98,25 +129,63 @@ class EditorNotifier extends Notifier<EditorState> {
     }
   }
 
-  void toggleHardwareConnection() {
+  Future<void> toggleHardwareConnection() async {
     final sync = ref.read(fx200HardwareSyncProvider);
     if (sync.isConnected) {
+      _manualDisconnect = true;
+      _autoConnectTimer?.cancel();
       sync.disconnect();
       state = state.copyWith(
         isHardwareConnected: false,
+        isConnectingHardware: false,
+        isSyncingPresets: false,
         hardwareStatus: 'USB OFFLINE',
       );
       return;
     }
+    _manualDisconnect = false;
+    await _connectHardware(silentOnFail: false);
+  }
 
-    final result = sync.connect(
+  Future<void> _connectHardware({required bool silentOnFail}) async {
+    final sync = ref.read(fx200HardwareSyncProvider);
+    if (sync.isConnected || state.isConnectingHardware) return;
+
+    if (!silentOnFail) {
+      state = state.copyWith(
+        isConnectingHardware: true,
+        hardwareStatus: 'CONNECTING...',
+      );
+    }
+
+    final result = await sync.connect(
       onModuleReceived: _applyHardwareModule,
-      onPresetNameReceived: (index, name) {
-        _hardwarePresetNames[index] = name;
+      onPresetNamesReceived: (names) {
+        _hardwarePresetNames.addAll(names);
         final current = state.preset;
-        if (current != null && current.patchNumber == index) {
-          state = state.copyWith(preset: current.copyWith(name: name));
-        }
+        final updatedName =
+            current != null ? _hardwarePresetNames[current.patchNumber] : null;
+        final syncedCount = _hardwarePresetNames.length;
+        final done = syncedCount >= 200;
+        state = state.copyWith(
+          presetNames: Map<int, String>.unmodifiable(_hardwarePresetNames),
+          isSyncingPresets: !done,
+          hardwareStatus: done
+              ? 'FX200 LIVE (IF 3)'
+              : 'SYNCING $syncedCount/200',
+          preset: (current != null &&
+                  updatedName != null &&
+                  updatedName.isNotEmpty)
+              ? current.copyWith(name: updatedName)
+              : null,
+        );
+      },
+      onPresetSyncComplete: () {
+        if (!state.isHardwareConnected) return;
+        state = state.copyWith(
+          isSyncingPresets: false,
+          hardwareStatus: 'FX200 LIVE (IF 3)',
+        );
       },
       onActivePatchReceived: (patch) {
         final current = state.preset;
@@ -133,16 +202,35 @@ class EditorNotifier extends Notifier<EditorState> {
         }
       },
       onChainOrderReceived: _applyHardwareChainOrder,
+      onOutputLevelReceived: (db) {
+        final current = state.preset;
+        if (current != null) {
+          state = state.copyWith(
+            preset: current.copyWith(outputLevelDb: db),
+          );
+        }
+      },
     );
-    state = state.copyWith(
-      isHardwareConnected: result.ok,
-      hardwareStatus: result.message,
-    );
+
     if (result.ok) {
+      _autoConnectTimer?.cancel();
+      state = state.copyWith(
+        isHardwareConnected: true,
+        isConnectingHardware: false,
+        isSyncingPresets: true,
+        hardwareStatus: 'SYNCING PRESETS...',
+      );
       sync.requestPresetList();
       if (state.preset != null) {
         sync.requestPreset(state.preset!.patchNumber);
       }
+    } else {
+      state = state.copyWith(
+        isHardwareConnected: false,
+        isConnectingHardware: false,
+        isSyncingPresets: false,
+        hardwareStatus: silentOnFail ? 'WAITING FX200 USB...' : result.message,
+      );
     }
   }
 
@@ -241,7 +329,14 @@ class EditorNotifier extends Notifier<EditorState> {
           .read(fx200HardwareSyncProvider)
           .sendPresetSave(current.patchNumber, current.name);
     }
-    state = state.copyWith(hasUnsavedChanges: false);
+    state = state.copyWith(
+      hasUnsavedChanges: false,
+      presetNames: Map<int, String>.unmodifiable(_hardwarePresetNames),
+    );
+  }
+
+  void togglePresetSidebar() {
+    state = state.copyWith(isPresetSidebarOpen: !state.isPresetSidebarOpen);
   }
 
   void selectBlock(String blockId) {
@@ -423,7 +518,11 @@ class EditorNotifier extends Notifier<EditorState> {
   void setOutputLevelDb(double db) {
     final current = state.preset;
     if (current == null) return;
-    _commitPreset(current.copyWith(outputLevelDb: db.clamp(-60.0, 12.0)));
+    final clamped = db.clamp(-60.0, 6.0);
+    _commitPreset(current.copyWith(outputLevelDb: clamped));
+    if (state.isHardwareConnected) {
+      ref.read(fx200HardwareSyncProvider).sendOutputLevelDb(clamped);
+    }
   }
 
   void undo() {

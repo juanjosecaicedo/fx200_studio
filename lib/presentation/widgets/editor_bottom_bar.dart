@@ -1,6 +1,3 @@
-import 'dart:async';
-import 'dart:math' as math;
-
 import 'package:material_ui/material_ui.dart';
 
 import '../../core/theme/editor_theme.dart';
@@ -26,31 +23,10 @@ class EditorBottomBar extends StatefulWidget {
 }
 
 class _EditorBottomBarState extends State<EditorBottomBar> {
-  Timer? _meterTimer;
-  double _inLevel = 0.42;
-  double _outLevel = 0.56;
   DateTime? _lastTap;
 
-  @override
-  void initState() {
-    super.initState();
-    _meterTimer = Timer.periodic(const Duration(milliseconds: 90), (_) {
-      if (!mounted) return;
-      final t = DateTime.now().millisecondsSinceEpoch / 240.0;
-      final outScale = ((widget.outputLevelDb + 60.0) / 72.0).clamp(0.1, 1.0);
-      setState(() {
-        _inLevel = (0.45 + 0.25 * math.sin(t)).clamp(0.05, 0.95);
-        _outLevel =
-            ((0.52 + 0.28 * math.cos(t * 1.15)) * outScale).clamp(0.05, 0.98);
-      });
-    });
-  }
-
-  @override
-  void dispose() {
-    _meterTimer?.cancel();
-    super.dispose();
-  }
+  double get _outLevel =>
+      (((widget.outputLevelDb + 60.0) / 66.0) * 0.72).clamp(0.0, 0.85);
 
   void _handleTapTempo() {
     final now = DateTime.now();
@@ -84,7 +60,13 @@ class _EditorBottomBarState extends State<EditorBottomBar> {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('OUTPUT', style: Theme.of(context).textTheme.labelSmall),
+              GestureDetector(
+                onDoubleTap: () => widget.onOutputLevelChanged(0.0),
+                child: Text(
+                  'OUTPUT',
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
+              ),
               const SizedBox(width: 8),
               SizedBox(
                 width: 140,
@@ -97,9 +79,10 @@ class _EditorBottomBarState extends State<EditorBottomBar> {
                     overlayShape: SliderComponentShape.noOverlay,
                   ),
                   child: Slider(
-                    value: widget.outputLevelDb.clamp(-60.0, 12.0),
+                    value: widget.outputLevelDb.clamp(-60.0, 6.0),
                     min: -60.0,
-                    max: 12.0,
+                    max: 6.0,
+                    divisions: 132,
                     onChanged: widget.onOutputLevelChanged,
                   ),
                 ),
@@ -168,7 +151,7 @@ class _EditorBottomBarState extends State<EditorBottomBar> {
             children: [
               Text('IN', style: Theme.of(context).textTheme.labelSmall),
               const SizedBox(width: 6),
-              _LevelMeterBar(level: _inLevel, ext: ext),
+              _LevelMeterBar(level: 0.0, ext: ext),
               const SizedBox(width: 12),
               Text('OUT', style: Theme.of(context).textTheme.labelSmall),
               const SizedBox(width: 6),

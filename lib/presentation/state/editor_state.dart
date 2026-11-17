@@ -11,10 +11,14 @@ class EditorState {
     this.hasUnsavedChanges = false,
     this.isLoading = false,
     this.isBrowserOpen = true,
+    this.isPresetSidebarOpen = true,
+    this.presetNames = const <int, String>{},
     this.searchQuery = '',
     this.categoryFilter,
     this.errorMessage,
     this.isHardwareConnected = false,
+    this.isConnectingHardware = false,
+    this.isSyncingPresets = false,
     this.hardwareStatus = 'USB OFFLINE',
   });
 
@@ -26,10 +30,14 @@ class EditorState {
   final bool hasUnsavedChanges;
   final bool isLoading;
   final bool isBrowserOpen;
+  final bool isPresetSidebarOpen;
+  final Map<int, String> presetNames;
   final String searchQuery;
   final EffectCategory? categoryFilter;
   final String? errorMessage;
   final bool isHardwareConnected;
+  final bool isConnectingHardware;
+  final bool isSyncingPresets;
   final String hardwareStatus;
 
   bool get canUndo => undoStack.isNotEmpty;
@@ -54,12 +62,16 @@ class EditorState {
     bool? hasUnsavedChanges,
     bool? isLoading,
     bool? isBrowserOpen,
+    bool? isPresetSidebarOpen,
+    Map<int, String>? presetNames,
     String? searchQuery,
     EffectCategory? categoryFilter,
     bool clearCategoryFilter = false,
     String? errorMessage,
     bool clearError = false,
     bool? isHardwareConnected,
+    bool? isConnectingHardware,
+    bool? isSyncingPresets,
     String? hardwareStatus,
   }) {
     return EditorState(
@@ -72,12 +84,16 @@ class EditorState {
       hasUnsavedChanges: hasUnsavedChanges ?? this.hasUnsavedChanges,
       isLoading: isLoading ?? this.isLoading,
       isBrowserOpen: isBrowserOpen ?? this.isBrowserOpen,
+      isPresetSidebarOpen: isPresetSidebarOpen ?? this.isPresetSidebarOpen,
+      presetNames: presetNames ?? this.presetNames,
       searchQuery: searchQuery ?? this.searchQuery,
       categoryFilter: clearCategoryFilter
           ? null
           : (categoryFilter ?? this.categoryFilter),
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       isHardwareConnected: isHardwareConnected ?? this.isHardwareConnected,
+      isConnectingHardware: isConnectingHardware ?? this.isConnectingHardware,
+      isSyncingPresets: isSyncingPresets ?? this.isSyncingPresets,
       hardwareStatus: hardwareStatus ?? this.hardwareStatus,
     );
   }
