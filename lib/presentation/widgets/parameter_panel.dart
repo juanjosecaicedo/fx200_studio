@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../core/theme/editor_theme.dart';
 import '../../domain/entities/preset.dart';
 import 'block_tile.dart';
+import 'parametric_eq_graph.dart';
 import 'rotary_knob.dart';
 
 /// Adaptive parameter editor panel for the currently selected [EffectBlock].
@@ -46,10 +47,18 @@ class ParameterPanel extends StatelessWidget {
     }
 
     final accent = ext.colorFor(current.category);
-    final knobs = current.parameters
+    final isGraphicEq = current.category == EffectCategory.eq &&
+        current.parameters.length >= 6;
+    final eqBands = isGraphicEq
+        ? current.parameters.sublist(0, 6)
+        : const <BlockParameter>[];
+    final nonEqParams = isGraphicEq
+        ? current.parameters.sublist(6)
+        : current.parameters;
+    final knobs = nonEqParams
         .where((p) => p.kind == BlockParameterKind.knob)
         .toList();
-    final sliders = current.parameters
+    final sliders = nonEqParams
         .where((p) => p.kind == BlockParameterKind.slider)
         .toList();
     final modes = <String>{
@@ -146,7 +155,15 @@ class ParameterPanel extends StatelessWidget {
             ],
           ),
           Divider(height: 20, color: ext.subtleBorder),
-          if (knobs.isNotEmpty)
+          if (isGraphicEq) ...[
+            ParametricEqGraph(
+              blockId: current.id,
+              bands: eqBands,
+              extraKnobs: knobs,
+              accent: accent,
+              onParameterChanged: onParameterChanged,
+            ),
+          ] else if (knobs.isNotEmpty)
             Wrap(
               spacing: 20,
               runSpacing: 14,

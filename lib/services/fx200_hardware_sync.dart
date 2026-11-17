@@ -31,9 +31,9 @@ class Fx200HardwareSync {
       case 3:
         return EffectCategory.cab;
       case 4:
-        return EffectCategory.gate;
-      case 5:
         return EffectCategory.volume;
+      case 5:
+        return EffectCategory.gate;
       case 6:
         return EffectCategory.eq;
       case 7:
@@ -55,9 +55,9 @@ class Fx200HardwareSync {
         return 2;
       case EffectCategory.cab:
         return 3;
-      case EffectCategory.gate:
-        return 4;
       case EffectCategory.volume:
+        return 4;
+      case EffectCategory.gate:
         return 5;
       case EffectCategory.eq:
         return 6;

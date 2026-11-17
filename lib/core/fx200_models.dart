@@ -149,7 +149,7 @@ class Fx200Models {
   static const List<String> eqModels = <String>[
     '6 BAND EQ 1',
     '6 BAND EQ 2',
-    '5 BAND EQ',
+    '6 BAND EQ 3',
     '4 BAND CUSTOM',
   ];
 
@@ -286,32 +286,32 @@ class Fx200Models {
         ],
       ),
       EffectBlock(
-        id: 'fx200_ns',
-        category: EffectCategory.gate,
-        modelName: nsModels.first,
-        availableModels: nsModels,
-        enabled: false,
-        laneIndex: 0,
-        slotIndex: 4,
-        parameters: <BlockParameter>[
-          _p('p0', 'THRES', 50, max: 120),
-          _p('p1', 'DECAY', 50, max: 120),
-          _p('p2', 'ATTACK', 0),
-        ],
-      ),
-      EffectBlock(
         id: 'fx200_fxloop',
         category: EffectCategory.volume,
         modelName: fxLoopModels.first,
         availableModels: fxLoopModels,
         enabled: false,
         laneIndex: 0,
-        slotIndex: 5,
+        slotIndex: 4,
         mode: 'SERIAL',
         parameters: <BlockParameter>[
-          _p('p0', 'SEND', 5),
-          _p('p1', 'RETURN', 0),
-          _p('p2', 'MIX', 50),
+          _p('p0', 'SEND', 120, max: 132),
+          _p('p1', 'RETURN', 120, max: 132),
+          _p('p2', 'MIX', 0),
+        ],
+      ),
+      EffectBlock(
+        id: 'fx200_ns',
+        category: EffectCategory.gate,
+        modelName: nsModels.first,
+        availableModels: nsModels,
+        enabled: false,
+        laneIndex: 0,
+        slotIndex: 5,
+        parameters: <BlockParameter>[
+          _p('p0', 'THRES', 5),
+          _p('p1', 'DECAY', 0),
+          _p('p2', 'ATTACK', 0),
         ],
       ),
       EffectBlock(

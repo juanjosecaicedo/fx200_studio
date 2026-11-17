@@ -155,12 +155,37 @@ class EditorNotifier extends Notifier<EditorState> {
       if (block.category != category) return block;
       matched = true;
       final updatedParams = <BlockParameter>[];
-      for (var i = 0; i < block.parameters.length; i++) {
-        final p = block.parameters[i];
-        if (i < mod.params.length) {
-          updatedParams.add(p.copyWith(value: mod.params[i].toDouble()));
+      for (var i = 0; i < mod.params.length; i++) {
+        final hwVal = mod.params[i].toDouble();
+        if (i < block.parameters.length) {
+          final p = block.parameters[i];
+          updatedParams.add(
+            hwVal > p.max
+                ? BlockParameter(
+                    id: p.id,
+                    label: p.label,
+                    value: hwVal,
+                    defaultValue: p.defaultValue,
+                    min: p.min,
+                    max: hwVal,
+                    unit: p.unit,
+                    kind: p.kind,
+                    options: p.options,
+                  )
+                : p.copyWith(value: hwVal),
+          );
         } else {
-          updatedParams.add(p);
+          final nextMax = hwVal > 100.0 ? hwVal : 100.0;
+          updatedParams.add(
+            BlockParameter(
+              id: 'p$i',
+              label: 'P${i + 1}',
+              value: hwVal,
+              defaultValue: hwVal,
+              min: 0,
+              max: nextMax,
+            ),
+          );
         }
       }
       final updatedModels =
