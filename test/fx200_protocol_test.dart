@@ -127,4 +127,32 @@ void main() {
       isNull,
     );
   });
+
+  test('encodes and decodes 0xA8 preset save/rename frame', () {
+    final packet = Fx200Protocol.buildPresetSavePacket(140, 'J900 V1 LEAD');
+    expect(Fx200Protocol.verifyFrame(packet), isTrue);
+    final body = packet.sublist(6, packet.length - 2);
+    final decoded = Fx200Protocol.decodePresetSaveFrame(
+      Fx200Protocol.opPresetSave,
+      body,
+    );
+    expect(decoded, isNotNull);
+    expect(decoded!.index, 140);
+    expect(decoded.name, 'J900 V1 LEAD');
+  });
+
+  test('encodes and decodes 0xA0 signal chain order frame', () {
+    final order = <int>[6, 2, 1, 3, 4, 5, 7, 8, 9, 10];
+    final enabled = <bool>[true, false, false, true, false, true, false, false, true, true];
+    final packet = Fx200Protocol.buildChainOrderPacket(order, enabled);
+    expect(Fx200Protocol.verifyFrame(packet), isTrue);
+    final body = packet.sublist(6, packet.length - 2);
+    final decoded = Fx200Protocol.decodeChainOrderFrame(
+      Fx200Protocol.opCmdA0,
+      body,
+    );
+    expect(decoded, isNotNull);
+    expect(decoded!.order1Based, order);
+    expect(decoded.enabledStates, enabled);
+  });
 }

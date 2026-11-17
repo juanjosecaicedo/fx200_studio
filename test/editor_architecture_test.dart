@@ -31,29 +31,29 @@ void main() {
 
       final updated = const UpdateBlockParameterUseCase()(
         preset: preset,
-        blockId: 'blk_amp',
-        parameterId: 'gain',
+        blockId: 'fx200_amp',
+        parameterId: 'p0',
         value: 82.0,
       );
-      final amp = updated.blocks.firstWhere((b) => b.id == 'blk_amp');
-      expect(amp.parameters.firstWhere((p) => p.id == 'gain').value, 82.0);
+      final amp = updated.blocks.firstWhere((b) => b.id == 'fx200_amp');
+      expect(amp.parameters.firstWhere((p) => p.id == 'p0').value, 82.0);
 
       final bypassed = const ToggleBlockBypassUseCase()(
         preset: updated,
-        blockId: 'blk_amp',
+        blockId: 'fx200_amp',
       );
       expect(
-        bypassed.blocks.firstWhere((b) => b.id == 'blk_amp').enabled,
+        bypassed.blocks.firstWhere((b) => b.id == 'fx200_amp').enabled,
         isFalse,
       );
 
       final reordered = const ReorderBlocksUseCase()(
         preset: bypassed,
-        blockId: 'blk_delay',
+        blockId: 'fx200_dly',
         targetLane: 0,
         targetSlot: 0,
       );
-      expect(reordered.blocks.first.id, 'blk_delay');
+      expect(reordered.blocks.first.id, 'fx200_dly');
       expect(reordered.blocks.first.slotIndex, 0);
     },
   );
@@ -65,7 +65,7 @@ void main() {
     await container.read(editorProvider.notifier).loadPreset(0);
     final notifier = container.read(editorProvider.notifier);
 
-    notifier.toggleBypass('blk_amp');
+    notifier.toggleBypass('fx200_amp');
     expect(container.read(editorProvider).canUndo, isTrue);
     expect(container.read(editorProvider).hasUnsavedChanges, isTrue);
 
@@ -77,7 +77,7 @@ void main() {
         .read(editorProvider)
         .preset!
         .blocks
-        .firstWhere((b) => b.id == 'blk_amp');
+        .firstWhere((b) => b.id == 'fx200_amp');
     expect(amp.enabled, isFalse);
 
     final theme = buildFxEditorTheme();

@@ -238,7 +238,12 @@ class _LaneRow extends StatelessWidget {
             laneIndex: laneIndex,
             slotIndex: i,
             ext: ext,
-            onDropBlock: (b) => onReorderBlock(b.id, laneIndex, i),
+            onDropBlock: (b) {
+              final target = (b.laneIndex == laneIndex && b.slotIndex < i)
+                  ? i - 1
+                  : i;
+              onReorderBlock(b.id, laneIndex, target);
+            },
             onDropCatalog: (m) => onAddFromCatalog(m, laneIndex, i),
           ),
           DragTarget<Object>(
@@ -279,7 +284,12 @@ class _LaneRow extends StatelessWidget {
           laneIndex: laneIndex,
           slotIndex: blocks.length,
           ext: ext,
-          onDropBlock: (b) => onReorderBlock(b.id, laneIndex, blocks.length),
+          onDropBlock: (b) {
+            final target = (b.laneIndex == laneIndex && b.slotIndex < blocks.length)
+                ? blocks.length - 1
+                : blocks.length;
+            onReorderBlock(b.id, laneIndex, target);
+          },
           onDropCatalog: (m) => onAddFromCatalog(m, laneIndex, blocks.length),
         ),
         _AddBlockSlot(

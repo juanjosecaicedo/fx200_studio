@@ -132,6 +132,7 @@ class EditorNotifier extends Notifier<EditorState> {
           );
         }
       },
+      onChainOrderReceived: _applyHardwareChainOrder,
     );
     state = state.copyWith(
       isHardwareConnected: result.ok,
@@ -178,10 +179,43 @@ class EditorNotifier extends Notifier<EditorState> {
     }
   }
 
+  void _applyHardwareChainOrder(
+    List<int> order1Based,
+    List<bool> enabledStates,
+  ) {
+    final current = state.preset;
+    if (current == null) return;
+    final slotPositionByCategory = <EffectCategory, int>{};
+    for (var pos = 0; pos < order1Based.length; pos++) {
+      final hwSlot = order1Based[pos] - 1;
+      final cat = Fx200HardwareSync.categoryForSlot(hwSlot);
+      slotPositionByCategory[cat] = pos;
+    }
+    final updatedBlocks = current.blocks.map((block) {
+      final hwSlot = Fx200HardwareSync.slotForCategory(block.category);
+      final nextPos = slotPositionByCategory[block.category] ?? block.slotIndex;
+      final nextEnabled = hwSlot < enabledStates.length
+          ? enabledStates[hwSlot]
+          : block.enabled;
+      return block.copyWith(
+        laneIndex: 0,
+        slotIndex: nextPos,
+        enabled: nextEnabled,
+      );
+    }).toList();
+    state = state.copyWith(preset: current.copyWith(blocks: updatedBlocks));
+  }
+
   Future<void> saveCurrentPreset() async {
     final current = state.preset;
     if (current == null) return;
     await ref.read(savePresetUseCaseProvider)(current);
+    _hardwarePresetNames[current.patchNumber] = current.name;
+    if (state.isHardwareConnected) {
+      ref
+          .read(fx200HardwareSyncProvider)
+          .sendPresetSave(current.patchNumber, current.name);
+    }
     state = state.copyWith(hasUnsavedChanges: false);
   }
 
@@ -257,6 +291,9 @@ class EditorNotifier extends Notifier<EditorState> {
       targetSlot: targetSlot,
     );
     _commitPreset(next);
+    if (state.isHardwareConnected) {
+      ref.read(fx200HardwareSyncProvider).sendChainOrder(next.blocks);
+    }
   }
 
   void addBlockFromCatalog(
@@ -333,7 +370,9 @@ class EditorNotifier extends Notifier<EditorState> {
   void renamePreset(String name) {
     final current = state.preset;
     if (current == null || name.trim().isEmpty) return;
-    _commitPreset(current.copyWith(name: name.trim()));
+    final trimmed = name.trim();
+    final capped = trimmed.length > 15 ? trimmed.substring(0, 15) : trimmed;
+    _commitPreset(current.copyWith(name: capped), recordHistory: false);
   }
 
   void selectScene(String scene) {

@@ -113,6 +113,7 @@ class Fx200Protocol {
   static const int opCmdA4 = 0xa4; // len 0x06
   static const int opPresetList = 0xa5; // multi-packet preset/IR list
   static const int opPresetRead = 0xa6; // len 0x11
+  static const int opPresetSave = 0xa8; // len 0x12 (index + 16-byte ASCII name)
   static const int opCmdAe = 0xae; // len 0x05
   static const int opCmdBb = 0xbb; // len 0x03
   static const int opCmdE0 = 0xe0; // 07 aa 55 01 00 e0 35 e1
@@ -123,11 +124,11 @@ class Fx200Protocol {
     'AMP',
     'CAB',
     'NS',
+    'FX LOOP',
     'EQ',
     'MOD',
     'DLY',
     'REV',
-    'VOL',
   ];
 
   /// Decodes a `0x91`..`0x9A` module state frame (`[enabled(u16BE), model(u16BE), ...params(u16BE)]`).
@@ -197,6 +198,74 @@ class Fx200Protocol {
       index: index,
       name: String.fromCharCodes(nameBytes).trim(),
     );
+  }
+
+  /// Builds a `0xA8` preset save/rename HID packet (`[0xA8, presetIndex, ...16-byte ASCII name]`).
+  static Uint8List buildPresetSavePacket(int presetIndex, String name) {
+    final clamped = presetIndex.clamp(0, Fx200Constants.presetPatchCount - 1);
+    final sanitized = name.trim();
+    final nameBytes = List<int>.filled(16, 0);
+    final limit = sanitized.length < 15 ? sanitized.length : 15;
+    for (var i = 0; i < limit; i++) {
+      final code = sanitized.codeUnitAt(i);
+      nameBytes[i] = (code >= 32 && code < 127) ? code : 0x20;
+    }
+    return buildHidPacket(
+      payload: <int>[opPresetSave, clamped, ...nameBytes],
+    );
+  }
+
+  /// Decodes a `0xA8` preset save/rename frame (`body[0] == index`, `body[1..16]` ASCII name).
+  static ({int index, String name})? decodePresetSaveFrame(
+    int opcode,
+    List<int> body,
+  ) {
+    if (opcode != opPresetSave || body.length < 2) {
+      return null;
+    }
+    final index = body[0] & 0xff;
+    final nameBytes = <int>[];
+    for (var i = 1; i < 17 && i < body.length; i++) {
+      final b = body[i] & 0xff;
+      if (b == 0) break;
+      if (b >= 32 && b < 127) nameBytes.add(b);
+    }
+    return (
+      index: index,
+      name: String.fromCharCodes(nameBytes).trim(),
+    );
+  }
+
+  /// Builds a `0xA0` signal-chain order + bypass packet (`[0xA0, ...10 module IDs 1..10, ...10 enabled bytes]`).
+  static Uint8List buildChainOrderPacket(
+    List<int> moduleOrder1Based,
+    List<bool> enabledStates,
+  ) {
+    final order = List<int>.generate(10, (i) => i + 1);
+    for (var i = 0; i < 10 && i < moduleOrder1Based.length; i++) {
+      order[i] = moduleOrder1Based[i].clamp(1, 10);
+    }
+    final enabled = List<int>.filled(10, 1);
+    for (var i = 0; i < 10 && i < enabledStates.length; i++) {
+      enabled[i] = enabledStates[i] ? 1 : 0;
+    }
+    return buildHidPacket(
+      payload: <int>[opCmdA0, ...order, ...enabled],
+    );
+  }
+
+  /// Decodes a `0xA0` signal-chain order frame (`body[0..9]` 1-based module IDs, `body[10..19]` enabled flags).
+  static ({List<int> order1Based, List<bool> enabledStates})?
+      decodeChainOrderFrame(int opcode, List<int> body) {
+    if (opcode != opCmdA0 || body.length < 20) {
+      return null;
+    }
+    final order = body.sublist(0, 10).map((b) => b & 0xff).toList();
+    if (order.any((id) => id < 1 || id > 10)) {
+      return null;
+    }
+    final enabled = body.sublist(10, 20).map((b) => (b & 0xff) != 0).toList();
+    return (order1Based: order, enabledStates: enabled);
   }
 
   /// Computes the FX200 CRC-16/CCITT (`poly = 0x1021`, `init = 0x0000`, `xorOut = 0xffff`)

@@ -33,15 +33,15 @@ class Fx200HardwareSync {
       case 4:
         return EffectCategory.gate;
       case 5:
-        return EffectCategory.eq;
-      case 6:
-        return EffectCategory.modulation;
-      case 7:
-        return EffectCategory.delay;
-      case 8:
-        return EffectCategory.reverb;
-      default:
         return EffectCategory.volume;
+      case 6:
+        return EffectCategory.eq;
+      case 7:
+        return EffectCategory.modulation;
+      case 8:
+        return EffectCategory.delay;
+      default:
+        return EffectCategory.reverb;
     }
   }
 
@@ -57,15 +57,15 @@ class Fx200HardwareSync {
         return 3;
       case EffectCategory.gate:
         return 4;
-      case EffectCategory.eq:
-        return 5;
-      case EffectCategory.modulation:
-        return 6;
-      case EffectCategory.delay:
-        return 7;
-      case EffectCategory.reverb:
-        return 8;
       case EffectCategory.volume:
+        return 5;
+      case EffectCategory.eq:
+        return 6;
+      case EffectCategory.modulation:
+        return 7;
+      case EffectCategory.delay:
+        return 8;
+      case EffectCategory.reverb:
         return 9;
     }
   }
@@ -74,6 +74,8 @@ class Fx200HardwareSync {
     required void Function(Fx200ModuleState module) onModuleReceived,
     required void Function(int index, String name) onPresetNameReceived,
     void Function(int activePatch)? onActivePatchReceived,
+    void Function(List<int> order1Based, List<bool> enabledStates)?
+        onChainOrderReceived,
   }) {
     if (isConnected) {
       return (ok: true, message: 'FX200 HID already connected.');
@@ -110,6 +112,22 @@ class Fx200HardwareSync {
           );
           if (dump != null && dump.name.isNotEmpty) {
             onPresetNameReceived(dump.index, dump.name);
+            continue;
+          }
+          final saved = Fx200Protocol.decodePresetSaveFrame(
+            frame.opcode,
+            frame.body,
+          );
+          if (saved != null && saved.name.isNotEmpty) {
+            onPresetNameReceived(saved.index, saved.name);
+            continue;
+          }
+          final chain = Fx200Protocol.decodeChainOrderFrame(
+            frame.opcode,
+            frame.body,
+          );
+          if (chain != null && onChainOrderReceived != null) {
+            onChainOrderReceived(chain.order1Based, chain.enabledStates);
             continue;
           }
           if (frame.opcode == Fx200Protocol.opCmdBb &&
@@ -184,6 +202,41 @@ class Fx200HardwareSync {
     );
     _lastModules[slot] = state;
     session.sendRaw(Fx200Protocol.encodeModuleFrame(state));
+  }
+
+  void sendPresetSave(int patchNumber, String name) {
+    final session = _session;
+    if (session == null || !session.isOpen) return;
+    session.sendRaw(Fx200Protocol.buildPresetSavePacket(patchNumber, name));
+  }
+
+  void sendChainOrder(List<EffectBlock> blocks) {
+    final session = _session;
+    if (session == null || !session.isOpen) return;
+    final ordered = List<EffectBlock>.from(blocks)
+      ..sort((a, b) {
+        final laneCmp = a.laneIndex.compareTo(b.laneIndex);
+        return laneCmp != 0 ? laneCmp : a.slotIndex.compareTo(b.slotIndex);
+      });
+    final order1Based = <int>[];
+    final seen = <int>{};
+    final enabledBySlot = List<bool>.filled(10, true);
+    for (final b in ordered) {
+      final slot = slotForCategory(b.category);
+      enabledBySlot[slot] = b.enabled;
+      final id1Based = slot + 1;
+      if (seen.add(id1Based)) {
+        order1Based.add(id1Based);
+      }
+    }
+    for (var id = 1; id <= 10; id++) {
+      if (seen.add(id)) {
+        order1Based.add(id);
+      }
+    }
+    session.sendRaw(
+      Fx200Protocol.buildChainOrderPacket(order1Based, enabledBySlot),
+    );
   }
 
   void disconnect() {

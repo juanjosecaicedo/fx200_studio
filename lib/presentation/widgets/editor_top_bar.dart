@@ -122,14 +122,17 @@ class _EditorTopBarState extends State<EditorTopBar> {
             ),
           ),
 
-          // Editable preset name
+          // Editable preset name (FX200 supports up to 15 ASCII characters)
           SizedBox(
             width: 220,
             child: TextField(
               controller: _nameController,
+              maxLength: 15,
+              onChanged: widget.onRenamePreset,
               onSubmitted: widget.onRenamePreset,
               style: Theme.of(context).textTheme.titleSmall,
               decoration: InputDecoration(
+                counterText: '',
                 isDense: true,
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
