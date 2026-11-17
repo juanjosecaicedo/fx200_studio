@@ -1,9 +1,11 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
-import 'ui/home_page.dart';
+import 'core/theme/editor_theme.dart';
+import 'presentation/pages/editor_page.dart';
 
 void main() {
-  runApp(const Fx200StudioApp());
+  runApp(const ProviderScope(child: Fx200StudioApp()));
 }
 
 class Fx200StudioApp extends StatelessWidget {
@@ -14,12 +16,8 @@ class Fx200StudioApp extends StatelessWidget {
     return MaterialApp(
       title: 'FX200 Studio',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        colorSchemeSeed: const Color(0xFFFF6D00),
-      ),
-      home: const Fx200HomePage(),
+      theme: buildFxEditorTheme(),
+      home: const EditorPage(),
     );
   }
 }

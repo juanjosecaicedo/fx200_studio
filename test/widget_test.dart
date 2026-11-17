@@ -1,13 +1,17 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fx200_studio/main.dart';
 
 void main() {
-  testWidgets('FX200 Studio renders USB, Signal Chain, and NAM Inspector', (tester) async {
-    await tester.pumpWidget(const Fx200StudioApp());
+  testWidgets('EditorPage renders SignalChain, ParameterPanel, Bars, and ModelBrowser',
+      (tester) async {
+    await tester.pumpWidget(const ProviderScope(child: Fx200StudioApp()));
+    await tester.pumpAndSettle();
 
-    expect(find.text('FX200 Studio · NAM A2'), findsOneWidget);
-    expect(find.text('Scan FX200 USB'), findsOneWidget);
-    expect(find.text('AMP (NAM A2)'), findsOneWidget);
-    expect(find.text('Name: TONE3000 Demo Crunch A2'), findsOneWidget);
+    expect(find.text('SIGNAL CHAIN'), findsOneWidget);
+    expect(find.text('MODEL BROWSER'), findsOneWidget);
+    expect(find.text('PATCH 000'), findsOneWidget);
+    expect(find.text('SAVE'), findsOneWidget);
+    expect(find.text('120 BPM'), findsOneWidget);
   });
 }

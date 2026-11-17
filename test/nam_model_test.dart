@@ -24,10 +24,42 @@ void main() {
     expect(model.weightCount, 3);
     expect(model.needsSampleRateConversion, isTrue);
     expect(model.dspCompatibility, NamDspCompatibility.compatible);
+    expect(model.weightsBytes, 12);
+    expect(model.estimatedM7CyclesPerSample, greaterThan(0));
+    expect(model.estimatedM7CpuPercent, lessThan(5.0));
   });
 
   test('throws FormatException when weights array is missing', () {
     const invalid = '{"architecture": "WaveNet"}';
     expect(() => NamModel.fromJsonString(invalid), throwsFormatException);
+  });
+
+  test('counts nested weights in NAM A2 SlimmableContainer', () {
+    const slimmable = '''
+    {
+      "version": "0.6.0",
+      "architecture": "SlimmableContainer",
+      "sample_rate": 48000,
+      "metadata": {"name": "FNDR BFSR A2"},
+      "config": {
+        "models": [
+          {"architecture": "WaveNet", "weights": [0.1, 0.2, 0.3, 0.4]},
+          {"architecture": "WaveNet", "weights": [0.5, 0.6]}
+        ]
+      },
+      "weights": []
+    }
+    ''';
+
+    final model = NamModel.fromJsonString(slimmable);
+    expect(model.architecture, 'SlimmableContainer');
+    expect(model.weightCount, 6);
+    expect(model.dspCompatibility, NamDspCompatibility.compatible);
+
+    // Slimming & .nam7 export
+    expect(model.effectiveWeightCount(0.5), 2);
+    final bin = model.exportNam7Binary(slimRatio: 0.5);
+    expect(String.fromCharCodes(bin.sublist(0, 4)), 'NAM7');
+    expect(bin.length, 16 + 2 * 4);
   });
 }
