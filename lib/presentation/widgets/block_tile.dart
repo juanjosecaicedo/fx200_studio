@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../core/theme/editor_theme.dart';
 import '../../domain/entities/preset.dart';
+import 'model_art_view.dart';
 
 /// Draggable hardware-styled effect block tile for [SignalChainView].
 class BlockTile extends StatelessWidget {
@@ -189,7 +190,14 @@ class _TileBody extends StatelessWidget {
                   ],
                 ],
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
+              ModelArtView(
+                category: block.category,
+                modelName: block.modelName,
+                width: double.infinity,
+                height: 44,
+              ),
+              const SizedBox(height: 4),
               Text(
                 BlockTile.shortLabelFor(block.category),
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(

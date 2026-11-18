@@ -1,11 +1,13 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../core/fx200_constants.dart';
+import '../../core/fx200_models.dart';
 import '../../core/theme/editor_theme.dart';
 import '../../domain/entities/preset.dart';
 
 /// Left sidebar listing all 200 FX200 presets with real hardware names,
-/// live search filtering, and one-click loading into the editor.
+/// live search filtering, one-click loading, copy / paste (buttons or
+/// right-click menu) and drag-and-drop reordering via the row handles.
 class PresetSidebar extends StatefulWidget {
   const PresetSidebar({
     super.key,
@@ -13,6 +15,17 @@ class PresetSidebar extends StatefulWidget {
     required this.presetNames,
     required this.onSelectPreset,
     this.isSyncing = false,
+    this.canEditPresets = false,
+    this.clipboardLabel,
+    this.onCopyPreset,
+    this.onPastePreset,
+    this.onClearPreset,
+    this.onMovePreset,
+    this.opsBusy = false,
+    this.opsProgress = 0,
+    this.opsMessage,
+    this.opsIsError = false,
+    this.onDismissOpsMessage,
   });
 
   final int activePatchNumber;
@@ -20,12 +33,139 @@ class PresetSidebar extends StatefulWidget {
   final ValueChanged<int> onSelectPreset;
   final bool isSyncing;
 
+  /// True when the pedal is connected and no operation is running.
+  final bool canEditPresets;
+
+  /// `"012 NAME"` of the copied preset, or null when the clipboard is empty.
+  final String? clipboardLabel;
+  final ValueChanged<int>? onCopyPreset;
+  final ValueChanged<int>? onPastePreset;
+  final ValueChanged<int>? onClearPreset;
+  final void Function(int from, int to)? onMovePreset;
+  final bool opsBusy;
+  final double opsProgress;
+  final String? opsMessage;
+  final bool opsIsError;
+  final VoidCallback? onDismissOpsMessage;
+
   @override
   State<PresetSidebar> createState() => _PresetSidebarState();
 }
 
 class _PresetSidebarState extends State<PresetSidebar> {
   String _query = '';
+
+  String _nameOf(int i) {
+    final n = widget.presetNames[i];
+    return (n != null && n.isNotEmpty) ? n : Fx200Models.defaultPresetName(i);
+  }
+
+  static String _pad(int i) => i.toString().padLeft(3, '0');
+
+  bool get _canPaste =>
+      widget.canEditPresets &&
+      widget.clipboardLabel != null &&
+      widget.onPastePreset != null;
+
+  Future<bool> _confirm(String title, String body, String action) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(body),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('CANCEL'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(action),
+          ),
+        ],
+      ),
+    );
+    return ok ?? false;
+  }
+
+  Future<void> _paste(int target) async {
+    if (!_canPaste) return;
+    final ok = await _confirm(
+      'Paste preset',
+      'Overwrite ${_pad(target)} "${_nameOf(target)}" on the pedal with '
+          '${widget.clipboardLabel}?',
+      'OVERWRITE',
+    );
+    if (ok) widget.onPastePreset!(target);
+  }
+
+  bool get _canClear => widget.canEditPresets && widget.onClearPreset != null;
+
+  Future<void> _clear(int index) async {
+    if (!_canClear) return;
+    final ok = await _confirm(
+      'Clear preset',
+      'Clear ${_pad(index)} "${_nameOf(index)}" on the pedal?\n\n'
+          'All modules are switched off, the chain order and footswitch are '
+          'reset, the EXP assignment is removed and it is renamed "Empty". '
+          'Copy it first if you may want it back.',
+      'CLEAR',
+    );
+    if (ok) widget.onClearPreset!(index);
+  }
+
+  Future<void> _move(int from, int to) async {
+    if (from == to || widget.onMovePreset == null) return;
+    final count = (from - to).abs() + 1;
+    final seconds = (count * 1.4).ceil();
+    final shift = from < to
+        ? 'Presets ${_pad(from + 1)}–${_pad(to)} move up one slot.'
+        : 'Presets ${_pad(to)}–${_pad(from - 1)} move down one slot.';
+    final ok = await _confirm(
+      'Move preset',
+      'Move ${_pad(from)} "${_nameOf(from)}" to position ${_pad(to)}?\n\n'
+          '$shift This reads and rewrites $count presets on the pedal '
+          '(about $seconds s). Do not unplug the pedal meanwhile.',
+      'MOVE',
+    );
+    if (ok) widget.onMovePreset!(from, to);
+  }
+
+  Future<void> _showContextMenu(Offset globalPosition, int index) async {
+    final selected = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        globalPosition.dx,
+        globalPosition.dy,
+        globalPosition.dx,
+        globalPosition.dy,
+      ),
+      items: [
+        PopupMenuItem<String>(
+          value: 'copy',
+          enabled: widget.canEditPresets && widget.onCopyPreset != null,
+          child: Text('Copy ${_pad(index)}'),
+        ),
+        PopupMenuItem<String>(
+          value: 'paste',
+          enabled: _canPaste,
+          child: Text(
+            widget.clipboardLabel == null
+                ? 'Paste here'
+                : 'Paste ${widget.clipboardLabel} here',
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'clear',
+          enabled: _canClear,
+          child: Text('Clear ${_pad(index)}...'),
+        ),
+      ],
+    );
+    if (selected == 'clear') await _clear(index);
+    if (selected == 'copy') widget.onCopyPreset?.call(index);
+    if (selected == 'paste') await _paste(index);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,11 +175,9 @@ class _PresetSidebarState extends State<PresetSidebar> {
 
     final visibleIndices = <int>[];
     for (var i = 0; i < Fx200Constants.presetPatchCount; i++) {
-      final name = widget.presetNames[i] ?? 'FX200 Patch #$i';
+      final name = widget.presetNames[i] ?? Fx200Models.defaultPresetName(i);
       final numStr = i.toString().padLeft(3, '0');
-      if (q.isEmpty ||
-          name.toLowerCase().contains(q) ||
-          numStr.contains(q)) {
+      if (q.isEmpty || name.toLowerCase().contains(q) || numStr.contains(q)) {
         visibleIndices.add(i);
       }
     }
@@ -57,10 +195,7 @@ class _PresetSidebarState extends State<PresetSidebar> {
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
             child: Row(
               children: [
-                Text(
-                  'PRESETS',
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
+                Text('PRESETS', style: Theme.of(context).textTheme.labelSmall),
                 const Spacer(),
                 Text(
                   widget.isSyncing
@@ -83,7 +218,7 @@ class _PresetSidebarState extends State<PresetSidebar> {
                   value: widget.presetNames.isEmpty
                       ? null
                       : widget.presetNames.length /
-                          Fx200Constants.presetPatchCount,
+                            Fx200Constants.presetPatchCount,
                   backgroundColor: ext.blockSurface,
                   valueColor: AlwaysStoppedAnimation<Color>(accent),
                 ),
@@ -97,13 +232,11 @@ class _PresetSidebarState extends State<PresetSidebar> {
               decoration: InputDecoration(
                 isDense: true,
                 hintText: 'Search presets...',
-                prefixIcon: Icon(
-                  Icons.search,
-                  size: 16,
-                  color: ext.textMuted,
+                prefixIcon: Icon(Icons.search, size: 16, color: ext.textMuted),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
                 ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 filled: true,
                 fillColor: ext.blockSurface,
                 border: OutlineInputBorder(
@@ -117,91 +250,243 @@ class _PresetSidebarState extends State<PresetSidebar> {
               ),
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: _smallButton,
+                    onPressed:
+                        widget.canEditPresets && widget.onCopyPreset != null
+                        ? () => widget.onCopyPreset!(widget.activePatchNumber)
+                        : null,
+                    icon: const Icon(Icons.copy, size: 14),
+                    label: const Text('COPY'),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: _smallButton,
+                    onPressed: _canPaste
+                        ? () => _paste(widget.activePatchNumber)
+                        : null,
+                    icon: const Icon(Icons.content_paste, size: 14),
+                    label: const Text('PASTE'),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Tooltip(
+                  message: 'Clear the active preset',
+                  child: OutlinedButton(
+                    style: _smallButton.copyWith(
+                      minimumSize: const WidgetStatePropertyAll(Size(34, 30)),
+                    ),
+                    onPressed: _canClear
+                        ? () => _clear(widget.activePatchNumber)
+                        : null,
+                    child: const Icon(Icons.delete_sweep_outlined, size: 16),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (widget.clipboardLabel != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+              child: Text(
+                'Clipboard: ${widget.clipboardLabel}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelSmall
+                    ?.copyWith(color: ext.textMuted, fontSize: 10),
+              ),
+            ),
+          if (widget.opsBusy || widget.opsMessage != null)
+            _OpsStatus(
+              busy: widget.opsBusy,
+              progress: widget.opsProgress,
+              message: widget.opsMessage ?? '',
+              isError: widget.opsIsError,
+              onDismiss: widget.onDismissOpsMessage,
+            ),
           const SizedBox(height: 8),
           Expanded(
-            child: ListView.builder(
+            child: ReorderableListView.builder(
+              buildDefaultDragHandles: false,
               padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
               itemCount: visibleIndices.length,
+              // newIndex is already adjusted for the removed item.
+              onReorderItem: (oldIndex, newIndex) {
+                if (newIndex == oldIndex) return;
+                _move(visibleIndices[oldIndex], visibleIndices[newIndex]);
+              },
               itemBuilder: (context, idx) {
                 final patchIndex = visibleIndices[idx];
+                final canDrag =
+                    widget.canEditPresets && widget.onMovePreset != null;
                 final isSelected = patchIndex == widget.activePatchNumber;
                 final hwName = widget.presetNames[patchIndex];
                 final displayName = (hwName != null && hwName.isNotEmpty)
                     ? hwName
-                    : 'FX200 Patch #$patchIndex';
+                    : Fx200Models.defaultPresetName(patchIndex);
 
                 return Padding(
+                  key: ValueKey<int>(patchIndex),
                   padding: const EdgeInsets.only(bottom: 4),
-                  child: InkWell(
-                    onTap: () => widget.onSelectPreset(patchIndex),
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 7,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? accent.withValues(alpha: 0.16)
-                            : ext.blockSurface,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: isSelected ? accent : ext.subtleBorder,
+                  child: GestureDetector(
+                    onSecondaryTapDown: (d) =>
+                        _showContextMenu(d.globalPosition, patchIndex),
+                    child: InkWell(
+                      onTap: () => widget.onSelectPreset(patchIndex),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 7,
                         ),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 5,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? accent.withValues(alpha: 0.25)
-                                  : ext.panelSurface,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              patchIndex.toString().padLeft(3, '0'),
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .labelSmall
-                                  ?.copyWith(
-                                    color:
-                                        isSelected ? accent : ext.textMuted,
-                                    fontSize: 10,
-                                  ),
-                            ),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? accent.withValues(alpha: 0.16)
+                              : ext.blockSurface,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isSelected ? accent : ext.subtleBorder,
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              displayName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
-                                  ?.copyWith(
-                                    color: isSelected
-                                        ? ext.textPrimary
-                                        : (hwName != null
-                                            ? ext.textPrimary
-                                            : ext.textMuted),
-                                    fontWeight: isSelected
-                                        ? FontWeight.w600
-                                        : FontWeight.w400,
-                                  ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 5,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? accent.withValues(alpha: 0.25)
+                                    : ext.panelSurface,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                patchIndex.toString().padLeft(3, '0'),
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(
+                                      color: isSelected
+                                          ? accent
+                                          : ext.textMuted,
+                                      fontSize: 10,
+                                    ),
+                              ),
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                displayName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: isSelected
+                                          ? ext.textPrimary
+                                          : (hwName != null
+                                                ? ext.textPrimary
+                                                : ext.textMuted),
+                                      fontWeight: isSelected
+                                          ? FontWeight.w600
+                                          : FontWeight.w400,
+                                    ),
+                              ),
+                            ),
+                            if (canDrag)
+                              ReorderableDragStartListener(
+                                index: idx,
+                                child: MouseRegion(
+                                  cursor: SystemMouseCursors.grab,
+                                  child: Tooltip(
+                                    message: 'Drag to move this preset',
+                                    waitDuration: const Duration(
+                                      milliseconds: 600,
+                                    ),
+                                    child: Icon(
+                                      Icons.drag_indicator,
+                                      size: 16,
+                                      color: ext.textMuted,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 );
               },
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+final ButtonStyle _smallButton = OutlinedButton.styleFrom(
+  visualDensity: VisualDensity.compact,
+  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+  textStyle: const TextStyle(fontSize: 11),
+);
+
+class _OpsStatus extends StatelessWidget {
+  const _OpsStatus({
+    required this.busy,
+    required this.progress,
+    required this.message,
+    required this.isError,
+    this.onDismiss,
+  });
+
+  final bool busy;
+  final double progress;
+  final String message;
+  final bool isError;
+  final VoidCallback? onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final ext = Theme.of(context).extension<FxEditorThemeExtension>()!;
+    final color = isError
+        ? ext.meterPeak
+        : (busy ? ext.textPrimary : ext.meterLow);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (busy)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: LinearProgressIndicator(
+                minHeight: 3,
+                value: progress > 0 ? progress : null,
+              ),
+            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  message,
+                  style: Theme.of(context).textTheme.labelSmall
+                      ?.copyWith(color: color, fontSize: 10),
+                ),
+              ),
+              if (!busy && onDismiss != null)
+                InkWell(
+                  onTap: onDismiss,
+                  child: Icon(Icons.close, size: 12, color: ext.textMuted),
+                ),
+            ],
           ),
         ],
       ),

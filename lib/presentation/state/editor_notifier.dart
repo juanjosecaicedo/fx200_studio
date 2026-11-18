@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
+import '../../core/fx200_models.dart';
 import '../../data/datasources/preset_remote_datasource.dart';
 import '../../data/repositories/preset_repository_impl.dart';
 import '../../domain/entities/preset.dart';
@@ -85,7 +86,9 @@ class EditorNotifier extends Notifier<EditorState> {
   }
 
   Future<void> _tryAutoConnect() async {
-    if (_manualDisconnect || state.isHardwareConnected || state.isConnectingHardware) {
+    if (_manualDisconnect ||
+        state.isHardwareConnected ||
+        state.isConnectingHardware) {
       return;
     }
     await _connectHardware(silentOnFail: true);
@@ -163,19 +166,21 @@ class EditorNotifier extends Notifier<EditorState> {
       onPresetNamesReceived: (names) {
         _hardwarePresetNames.addAll(names);
         final current = state.preset;
-        final updatedName =
-            current != null ? _hardwarePresetNames[current.patchNumber] : null;
+        final updatedName = current != null
+            ? _hardwarePresetNames[current.patchNumber]
+            : null;
         final syncedCount = _hardwarePresetNames.length;
-        final done = syncedCount >= 200;
+        // The names are complete slightly before the 0xE0 dump ends; the
+        // sync only counts as finished when the dump closes.
+        final done = syncedCount >= 200 && !sync.isDumping;
         state = state.copyWith(
           presetNames: Map<int, String>.unmodifiable(_hardwarePresetNames),
           isSyncingPresets: !done,
           hardwareStatus: done
               ? 'FX200 LIVE (IF 3)'
               : 'SYNCING $syncedCount/200',
-          preset: (current != null &&
-                  updatedName != null &&
-                  updatedName.isNotEmpty)
+          preset:
+              (current != null && updatedName != null && updatedName.isNotEmpty)
               ? current.copyWith(name: updatedName)
               : null,
         );
@@ -191,12 +196,17 @@ class EditorNotifier extends Notifier<EditorState> {
         final current = state.preset;
         if (current != null && current.patchNumber != patch) {
           final hwName = _hardwarePresetNames[patch];
+          // Changed on the pedal (footswitch / knob): follow it, never
+          // answer with a select. Undo history belongs to the old patch.
           state = state.copyWith(
+            hasUnsavedChanges: false,
+            undoStack: const <Preset>[],
+            redoStack: const <Preset>[],
             preset: current.copyWith(
               patchNumber: patch,
               name: (hwName != null && hwName.isNotEmpty)
                   ? hwName
-                  : current.name,
+                  : Fx200Models.defaultPresetName(patch),
             ),
           );
         }
@@ -205,8 +215,14 @@ class EditorNotifier extends Notifier<EditorState> {
       onOutputLevelReceived: (db) {
         final current = state.preset;
         if (current != null) {
+          state = state.copyWith(preset: current.copyWith(outputLevelDb: db));
+        }
+      },
+      onBpmReceived: (bpm) {
+        final current = state.preset;
+        if (current != null) {
           state = state.copyWith(
-            preset: current.copyWith(outputLevelDb: db),
+            preset: current.copyWith(bpm: bpm.clamp(40.0, 260.0)),
           );
         }
       },
@@ -220,10 +236,13 @@ class EditorNotifier extends Notifier<EditorState> {
         isSyncingPresets: true,
         hardwareStatus: 'SYNCING PRESETS...',
       );
+      // Only read: the 0xE0 dump ends with the pedal's own active patch
+      // (`A6 [patch]`) and its module frames, which onActivePatchReceived /
+      // _applyHardwareModule adopt. Sending `A6` here would switch the pedal
+      // to whatever the app opened locally (patch 0 = 01A), and because the
+      // pedal queues it behind the ~27 s dump it lands late, overriding
+      // footswitch changes made in the meantime.
       sync.requestPresetList();
-      if (state.preset != null) {
-        sync.requestPreset(state.preset!.patchNumber);
-      }
     } else {
       state = state.copyWith(
         isHardwareConnected: false,
@@ -242,44 +261,36 @@ class EditorNotifier extends Notifier<EditorState> {
     final updatedBlocks = current.blocks.map((block) {
       if (block.category != category) return block;
       matched = true;
-      final updatedParams = <BlockParameter>[];
-      for (var i = 0; i < mod.params.length; i++) {
-        final hwVal = mod.params[i].toDouble();
-        if (i < block.parameters.length) {
-          final p = block.parameters[i];
-          updatedParams.add(
-            hwVal > p.max
-                ? BlockParameter(
-                    id: p.id,
-                    label: p.label,
-                    value: hwVal,
-                    defaultValue: p.defaultValue,
-                    min: p.min,
-                    max: hwVal,
-                    unit: p.unit,
-                    kind: p.kind,
-                    options: p.options,
-                  )
-                : p.copyWith(value: hwVal),
-          );
-        } else {
-          final nextMax = hwVal > 100.0 ? hwVal : 100.0;
-          updatedParams.add(
-            BlockParameter(
-              id: 'p$i',
-              label: 'P${i + 1}',
-              value: hwVal,
-              defaultValue: hwVal,
-              min: 0,
-              max: nextMax,
-            ),
-          );
-        }
-      }
       final updatedModels =
           (mod.modelId >= 1 && mod.modelId <= block.availableModels.length)
           ? block.availableModels[mod.modelId - 1]
           : block.modelName;
+      final template =
+          Fx200Models.parametersForModel(block.category, updatedModels) ??
+          block.parameters;
+      final updatedParams = <BlockParameter>[];
+      for (var i = 0; i < mod.params.length; i++) {
+        final hwVal = mod.params[i].toDouble();
+        if (i < template.length) {
+          final p = template[i];
+          updatedParams.add(
+            (hwVal > p.max ? p.withMax(hwVal) : p).copyWith(value: hwVal),
+          );
+        } else {
+          // Word the current model does not use: keep it so it is written
+          // back unchanged, but do not show it.
+          updatedParams.add(
+            BlockParameter(
+              id: 'p$i',
+              label: 'RESERVED',
+              value: hwVal,
+              defaultValue: hwVal,
+              max: 65535,
+              kind: BlockParameterKind.reserved,
+            ),
+          );
+        }
+      }
       return block.copyWith(
         enabled: mod.enabled,
         modelName: updatedModels,
@@ -322,16 +333,34 @@ class EditorNotifier extends Notifier<EditorState> {
   Future<void> saveCurrentPreset() async {
     final current = state.preset;
     if (current == null) return;
-    await ref.read(savePresetUseCaseProvider)(current);
-    _hardwarePresetNames[current.patchNumber] = current.name;
+    final trimmed = current.name.trim();
+    final resolvedName = trimmed.isNotEmpty
+        ? (trimmed.length > 15 ? trimmed.substring(0, 15) : trimmed)
+        : Fx200Models.defaultPresetName(current.patchNumber);
+    final toSave = current.copyWith(name: resolvedName);
+    await ref.read(savePresetUseCaseProvider)(toSave);
+    _hardwarePresetNames[toSave.patchNumber] = resolvedName;
     if (state.isHardwareConnected) {
-      ref
-          .read(fx200HardwareSyncProvider)
-          .sendPresetSave(current.patchNumber, current.name);
+      final sync = ref.read(fx200HardwareSyncProvider);
+      sync.sendChainOrder(toSave.blocks);
+      sync.sendPresetSave(toSave.patchNumber, resolvedName);
     }
     state = state.copyWith(
+      preset: toSave,
       hasUnsavedChanges: false,
       presetNames: Map<int, String>.unmodifiable(_hardwarePresetNames),
+    );
+  }
+
+  /// Applies preset names written by copy/paste/move operations.
+  void applyPresetNames(Map<int, String> names) {
+    if (names.isEmpty) return;
+    _hardwarePresetNames.addAll(names);
+    final current = state.preset;
+    final renamed = current != null ? names[current.patchNumber] : null;
+    state = state.copyWith(
+      presetNames: Map<int, String>.unmodifiable(_hardwarePresetNames),
+      preset: renamed != null ? current!.copyWith(name: renamed) : null,
     );
   }
 
@@ -470,7 +499,12 @@ class EditorNotifier extends Notifier<EditorState> {
     if (current == null) return;
     final updated = current.blocks.map((b) {
       if (b.id != blockId) return b;
-      return b.copyWith(modelName: modelName);
+      // Models with their own layout (EQ) start from that model's defaults,
+      // like the pedal does when the model is changed on its screen.
+      final template = b.modelName == modelName
+          ? null
+          : Fx200Models.parametersForModel(b.category, modelName);
+      return b.copyWith(modelName: modelName, parameters: template);
     }).toList();
     final next = current.copyWith(blocks: updated);
     _commitPreset(next);
@@ -489,9 +523,8 @@ class EditorNotifier extends Notifier<EditorState> {
 
   void renamePreset(String name) {
     final current = state.preset;
-    if (current == null || name.trim().isEmpty) return;
-    final trimmed = name.trim();
-    final capped = trimmed.length > 15 ? trimmed.substring(0, 15) : trimmed;
+    if (current == null) return;
+    final capped = name.length > 15 ? name.substring(0, 15) : name;
     _commitPreset(current.copyWith(name: capped), recordHistory: false);
   }
 
@@ -512,7 +545,26 @@ class EditorNotifier extends Notifier<EditorState> {
   void setBpm(double bpm) {
     final current = state.preset;
     if (current == null) return;
-    _commitPreset(current.copyWith(bpm: bpm.clamp(40.0, 240.0)));
+    final clampedBpm = bpm.clamp(40.0, 260.0).roundToDouble();
+    final delayMs = (60000.0 / clampedBpm).roundToDouble().clamp(20.0, 2000.0);
+    String? delayBlockId;
+    final updatedBlocks = current.blocks.map((block) {
+      if (block.category != EffectCategory.delay || block.parameters.isEmpty) {
+        return block;
+      }
+      delayBlockId = block.id;
+      final params = List<BlockParameter>.from(block.parameters);
+      params[0] = params[0].copyWith(value: delayMs);
+      return block.copyWith(parameters: params);
+    }).toList();
+    final next = current.copyWith(bpm: clampedBpm, blocks: updatedBlocks);
+    _commitPreset(next);
+    if (state.isHardwareConnected) {
+      ref.read(fx200HardwareSyncProvider).sendTapTempoBpm(clampedBpm);
+      if (delayBlockId != null) {
+        _syncBlockToHardware(next, delayBlockId!, force: true);
+      }
+    }
   }
 
   void setOutputLevelDb(double db) {

@@ -1,6 +1,9 @@
 import 'dart:typed_data';
 
 import '../core/fx200_constants.dart';
+import 'fx200_device_settings.dart';
+
+export 'fx200_device_settings.dart';
 
 /// Decoded state of one FX200 effect module (`0x91`..`0x9A`).
 class Fx200ModuleState {
@@ -20,11 +23,7 @@ class Fx200ModuleState {
   final int modelId;
   final List<int> params;
 
-  Fx200ModuleState copyWith({
-    bool? enabled,
-    int? modelId,
-    List<int>? params,
-  }) {
+  Fx200ModuleState copyWith({bool? enabled, int? modelId, List<int>? params}) {
     return Fx200ModuleState(
       opcode: opcode,
       slotIndex: slotIndex,
@@ -108,15 +107,17 @@ class Fx200Protocol {
   static const int opHandshake =
       0x84; // payload: [0x84, 0x00, 0x00] -> CRC 0xF6 0xB7
   static const int opCmdA0 = 0xa0; // len 0x15
-  static const int opCmdA1 = 0xa1; // len 0x2f
-  static const int opCmdA3 = 0xa3; // len 0x0b
+  static const int opCmdA1 = 0xa1; // len 0x2f: global SYSTEM settings (46 B)
+  static const int opCmdA3 = 0xa3; // len 0x0b: per-preset EXP pedal assignment
   static const int opCmdA4 = 0xa4; // len 0x06
   static const int opPresetList = 0xa5; // multi-packet preset/IR list
-  static const int opPresetDump86 = 0x86; // single-preset dump (same layout as 0xA5)
+  static const int opPresetDump86 =
+      0x86; // single-preset dump (same layout as 0xA5)
   static const int opPresetRead = 0xa6; // len 0x11
   static const int opPresetSave = 0xa8; // len 0x12 (index + 16-byte ASCII name)
   static const int opCmdAe = 0xae; // len 0x05
-  static const int opCmdBb = 0xbb; // len 0x03
+  static const int opCmdBb =
+      0xbb; // len 0x03: "MERGE_STATUS"; last frame after 0xA6
   static const int opCmdE0 = 0xe0; // 07 aa 55 01 00 e0 35 e1
 
   static const List<String> moduleNames = <String>[
@@ -154,11 +155,7 @@ class Fx200Protocol {
 
   /// Encodes an [Fx200ModuleState] back into a `0x91`..`0x9A` HID packet.
   static Uint8List encodeModuleFrame(Fx200ModuleState state) {
-    final words = <int>[
-      state.enabled ? 1 : 0,
-      state.modelId,
-      ...state.params,
-    ];
+    final words = <int>[state.enabled ? 1 : 0, state.modelId, ...state.params];
     final payload = <int>[state.opcode];
     for (final w in words) {
       payload.add((w >> 8) & 0xff);
@@ -195,10 +192,38 @@ class Fx200Protocol {
       if (b == 0) break;
       if (b >= 32 && b < 127) nameBytes.add(b);
     }
-    return (
-      index: index,
-      name: String.fromCharCodes(nameBytes).trim(),
-    );
+    return (index: index, name: String.fromCharCodes(nameBytes).trim());
+  }
+
+  /// Fast-path decoder that extracts the preset index and 16-byte ASCII name
+  /// directly from the first 64-byte USB HID packet of a `0xA5`/`0x86` chunk-0
+  /// frame (`[len, 0xAA, 0x55, 0x05, 0x02, 0xA5/0x86, 0x80, 0x00, idx, 0x00, ...name]`),
+  /// so preset names are never lost even if a later packet in the 523-byte frame drops.
+  static ({int index, String name})? decodePresetDumpPacketHeader(
+    List<int> rawPacket,
+  ) {
+    if (rawPacket.length < 26) return null;
+    final chunkLen = rawPacket[0] & 0xff;
+    if (chunkLen < 25) return null;
+    final op = rawPacket[5] & 0xff;
+    if (rawPacket[1] != 0xaa ||
+        rawPacket[2] != 0x55 ||
+        (op != opPresetList && op != opPresetDump86) ||
+        rawPacket[6] != 0x80 ||
+        rawPacket[9] != 0x00) {
+      return null;
+    }
+    final index = rawPacket[8] & 0xff;
+    if (index < 0 || index >= Fx200Constants.presetPatchCount) return null;
+    final nameBytes = <int>[];
+    for (var i = 10; i < 26 && i <= chunkLen; i++) {
+      final b = rawPacket[i] & 0xff;
+      if (b == 0) break;
+      if (b >= 32 && b < 127) nameBytes.add(b);
+    }
+    final name = String.fromCharCodes(nameBytes).trim();
+    if (name.isEmpty) return null;
+    return (index: index, name: name);
   }
 
   /// Builds a `0xA8` preset save/rename HID packet (`[0xA8, presetIndex, ...16-byte ASCII name]`).
@@ -211,9 +236,7 @@ class Fx200Protocol {
       final code = sanitized.codeUnitAt(i);
       nameBytes[i] = (code >= 32 && code < 127) ? code : 0x20;
     }
-    return buildHidPacket(
-      payload: <int>[opPresetSave, clamped, ...nameBytes],
-    );
+    return buildHidPacket(payload: <int>[opPresetSave, clamped, ...nameBytes]);
   }
 
   /// Decodes a `0xA8` preset save/rename frame (`body[0] == index`, `body[1..16]` ASCII name).
@@ -231,10 +254,7 @@ class Fx200Protocol {
       if (b == 0) break;
       if (b >= 32 && b < 127) nameBytes.add(b);
     }
-    return (
-      index: index,
-      name: String.fromCharCodes(nameBytes).trim(),
-    );
+    return (index: index, name: String.fromCharCodes(nameBytes).trim());
   }
 
   /// Builds a `0xA0` signal-chain order + bypass packet (`[0xA0, ...10 module IDs 1..10, ...10 enabled bytes]`).
@@ -250,31 +270,60 @@ class Fx200Protocol {
     for (var i = 0; i < 10 && i < enabledStates.length; i++) {
       enabled[i] = enabledStates[i] ? 1 : 0;
     }
-    return buildHidPacket(
-      payload: <int>[opCmdA0, ...order, ...enabled],
-    );
+    return buildHidPacket(payload: <int>[opCmdA0, ...order, ...enabled]);
   }
 
-  /// Decodes a `0xA4` patch output level frame (`body[4]`, 0.5 dB steps: `120 == 0.0 dB`, `0..132` => `-60..+6 dB`).
-  static double? decodeOutputLevelFrame(int opcode, List<int> body) {
+  /// Decodes a `0xA4` footswitch/tap-tempo frame (`body[0] == fsMode`, `body[1..2] == ctrlMask`, `body[3..4] == bpm` u16BE `40..260`).
+  static ({int fsMode, int ctrlMask, int bpm})? decodeTapTempoFrame(
+    int opcode,
+    List<int> body,
+  ) {
     if (opcode != opCmdA4 || body.length < 5) {
       return null;
     }
-    final raw = (body[4] & 0xff).clamp(0, 132);
+    final fsMode = body[0] & 0xff;
+    final ctrlMask = ((body[1] & 0xff) << 8) | (body[2] & 0xff);
+    final bpm = (((body[3] & 0xff) << 8) | (body[4] & 0xff)).clamp(40, 260);
+    return (fsMode: fsMode, ctrlMask: ctrlMask, bpm: bpm);
+  }
+
+  /// Builds a `0xA4` footswitch/tap-tempo HID packet (`40..260 BPM`).
+  static Uint8List buildTapTempoPacket({
+    required int bpm,
+    int fsMode = 0x02,
+    int ctrlMask = 0x0002,
+  }) {
+    final clampedBpm = bpm.clamp(40, 260);
+    return buildHidPacket(
+      payload: <int>[
+        opCmdA4,
+        fsMode & 0xff,
+        (ctrlMask >> 8) & 0xff,
+        ctrlMask & 0xff,
+        (clampedBpm >> 8) & 0xff,
+        clampedBpm & 0xff,
+      ],
+    );
+  }
+
+  /// Decodes a `0xAE` global input/output level frame (`body[1]`, 0.5 dB steps: `120 == 0.0 dB`, `0..132` => `-60..+6 dB`).
+  static double? decodeOutputLevelFrame(int opcode, List<int> body) {
+    if (opcode != opCmdAe || body.length < 4) {
+      return null;
+    }
+    final raw = (body[1] & 0xff).clamp(0, 132);
     return (raw / 2.0) - 60.0;
   }
 
-  /// Builds a `0xA4` patch output level HID packet (`-60.0 .. +6.0 dB`).
+  /// Builds a `0xAE` global input/output level HID packet (`-60.0 .. +6.0 dB`).
   static Uint8List buildOutputLevelPacket(double db) {
     final raw = ((db.clamp(-60.0, 6.0) + 60.0) * 2.0).round().clamp(0, 132);
-    return buildHidPacket(
-      payload: <int>[opCmdA4, 0x01, 0x00, 0x80, 0x00, raw],
-    );
+    return buildHidPacket(payload: <int>[opCmdAe, 0x00, raw, 0x00, 0x00]);
   }
 
   /// Decodes a `0xA0` signal-chain order frame (`body[0..9]` 1-based module IDs, `body[10..19]` enabled flags).
   static ({List<int> order1Based, List<bool> enabledStates})?
-      decodeChainOrderFrame(int opcode, List<int> body) {
+  decodeChainOrderFrame(int opcode, List<int> body) {
     if (opcode != opCmdA0 || body.length < 20) {
       return null;
     }
@@ -284,6 +333,88 @@ class Fx200Protocol {
     }
     final enabled = body.sublist(10, 20).map((b) => (b & 0xff) != 0).toList();
     return (order1Based: order, enabledStates: enabled);
+  }
+
+  /// Builds an HID packet for an arbitrary `opcode` + raw `body` (used to
+  /// replay captured module/footswitch frames during a backup restore).
+  static Uint8List buildRawPacket(int opcode, List<int> body) {
+    return buildHidPacket(payload: <int>[opcode & 0xff, ...body]);
+  }
+
+  /// Decodes a `0xA1` global SYSTEM settings frame (46-byte body).
+  static Fx200GlobalSettings? decodeGlobalSettingsFrame(
+    int opcode,
+    List<int> body,
+  ) {
+    if (opcode != opCmdA1 || body.length < Fx200GlobalSettings.length) {
+      return null;
+    }
+    return Fx200GlobalSettings.fromBody(body);
+  }
+
+  /// Builds a `0xA1` packet that writes the whole global settings block.
+  static Uint8List buildGlobalSettingsPacket(Fx200GlobalSettings settings) {
+    return buildRawPacket(opCmdA1, settings.raw);
+  }
+
+  /// Builds a `0xA4` footswitch assignment packet.
+  static Uint8List buildFootswitchPacket(Fx200FootswitchConfig config) {
+    return buildTapTempoPacket(
+      bpm: config.bpm,
+      fsMode: config.mode,
+      ctrlMask: config.ctrlMask,
+    );
+  }
+
+  /// Size of one `0xA5`/`0x86` preset dump chunk and chunks per preset
+  /// (8 × 512 B = the 4096-byte preset record in firmware section 3).
+  static const int presetDumpChunkBytes = 512;
+  static const int presetDumpChunkCount = 8;
+  static const int presetDumpBytes =
+      presetDumpChunkBytes * presetDumpChunkCount;
+
+  /// Decodes any chunk of a `0xA5`/`0x86` preset dump:
+  /// `body = [0x80, idxHi, idxLo, chunk, ...512 data bytes]`
+  /// (`FX200.exe` reads the index as u16 big-endian at `0x42b469`).
+  static ({int index, int chunk, Uint8List data})? decodePresetDumpChunk(
+    int opcode,
+    List<int> body,
+  ) {
+    if ((opcode != opPresetList && opcode != opPresetDump86) ||
+        body.length < 4 + presetDumpChunkBytes ||
+        body[0] != 0x80) {
+      return null;
+    }
+    final index = ((body[1] & 0xff) << 8) | (body[2] & 0xff);
+    final chunk = body[3] & 0xff;
+    if (index >= Fx200Constants.presetPatchCount ||
+        chunk >= presetDumpChunkCount) {
+      return null;
+    }
+    return (
+      index: index,
+      chunk: chunk,
+      data: Uint8List.fromList(body.sublist(4, 4 + presetDumpChunkBytes)),
+    );
+  }
+
+  /// Offset of the 20-byte chain block (10 module IDs + 10 flags, the same
+  /// layout as the `0xA0` body) inside a 4096-byte preset dump: chunk 4,
+  /// data offset 40. Verified on all 200 presets in `captura.pcapng`.
+  static const int presetDumpChainOffset = 4 * presetDumpChunkBytes + 40;
+
+  /// Extracts the `0xA0`-compatible chain block from a full preset dump, or
+  /// `null` when the module IDs are not a permutation of `1..10`.
+  static Uint8List? chainBlockFromPresetDump(List<int> dump) {
+    if (dump.length < presetDumpChainOffset + 20) return null;
+    final block = Uint8List.fromList(
+      dump.sublist(presetDumpChainOffset, presetDumpChainOffset + 20),
+    );
+    final ids = block.sublist(0, 10).toList()..sort();
+    for (var i = 0; i < 10; i++) {
+      if (ids[i] != i + 1) return null;
+    }
+    return block;
   }
 
   /// Computes the FX200 CRC-16/CCITT (`poly = 0x1021`, `init = 0x0000`, `xorOut = 0xffff`)

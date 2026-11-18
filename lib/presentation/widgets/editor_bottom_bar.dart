@@ -34,8 +34,8 @@ class _EditorBottomBarState extends State<EditorBottomBar> {
     _lastTap = now;
     if (prev == null) return;
     final ms = now.difference(prev).inMilliseconds;
-    if (ms >= 250 && ms <= 1500) {
-      widget.onBpmChanged((60000.0 / ms).roundToDouble());
+    if (ms >= 230 && ms <= 1500) {
+      widget.onBpmChanged((60000.0 / ms).roundToDouble().clamp(40.0, 260.0));
     }
   }
 
@@ -90,9 +90,8 @@ class _EditorBottomBarState extends State<EditorBottomBar> {
               const SizedBox(width: 6),
               Text(
                 '${widget.outputLevelDb.toStringAsFixed(1)} dB',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: ext.textPrimary,
-                ),
+                style: Theme.of(context).textTheme.bodySmall
+                    ?.copyWith(color: ext.textPrimary),
               ),
             ],
           ),
@@ -131,15 +130,16 @@ class _EditorBottomBarState extends State<EditorBottomBar> {
               OutlinedButton(
                 onPressed: _handleTapTempo,
                 style: OutlinedButton.styleFrom(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   minimumSize: Size.zero,
                 ),
                 child: Text(
                   'TAP',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: ext.textPrimary,
-                  ),
+                  style: Theme.of(context).textTheme.labelSmall
+                      ?.copyWith(color: ext.textPrimary),
                 ),
               ),
             ],

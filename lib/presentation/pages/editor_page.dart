@@ -5,8 +5,12 @@ import '../../core/theme/editor_theme.dart';
 import '../../domain/entities/preset.dart';
 import '../../ui/home_page.dart';
 import '../state/editor_notifier.dart';
+import '../state/preset_ops_notifier.dart';
+import '../widgets/backup_dialog.dart';
 import '../widgets/editor_bottom_bar.dart';
 import '../widgets/editor_top_bar.dart';
+import '../widgets/footswitch_dialog.dart';
+import '../widgets/global_settings_dialog.dart';
 import '../widgets/model_browser.dart';
 import '../widgets/parameter_panel.dart';
 import '../widgets/preset_sidebar.dart';
@@ -46,6 +50,9 @@ class _EditorPageState extends ConsumerState<EditorPage> {
     final state = ref.watch(editorProvider);
     final notifier = ref.read(editorProvider.notifier);
     final preset = state.preset;
+    final ops = ref.watch(presetOpsProvider);
+    final opsNotifier = ref.read(presetOpsProvider.notifier);
+    final clip = ops.clipboard;
 
     if (preset == null) {
       return Scaffold(
@@ -81,6 +88,9 @@ class _EditorPageState extends ConsumerState<EditorPage> {
             onToggleBrowser: notifier.toggleBrowser,
             isPresetSidebarOpen: state.isPresetSidebarOpen,
             onTogglePresetSidebar: notifier.togglePresetSidebar,
+            onOpenFootswitch: () => showFootswitchDialog(context),
+            onOpenSystem: () => showGlobalSettingsDialog(context),
+            onOpenBackup: () => showBackupDialog(context),
           ),
           Expanded(
             child: Row(
@@ -95,6 +105,23 @@ class _EditorPageState extends ConsumerState<EditorPage> {
                           presetNames: state.presetNames,
                           isSyncing: state.isSyncingPresets,
                           onSelectPreset: notifier.loadPreset,
+                          canEditPresets:
+                              state.isHardwareConnected &&
+                              !state.isSyncingPresets &&
+                              !ops.isBusy,
+                          clipboardLabel: clip == null
+                              ? null
+                              : '${clip.index.toString().padLeft(3, '0')} '
+                                    '${clip.name}',
+                          onCopyPreset: opsNotifier.copy,
+                          onPastePreset: opsNotifier.paste,
+                          onClearPreset: opsNotifier.clear,
+                          onMovePreset: opsNotifier.move,
+                          opsBusy: ops.isBusy,
+                          opsProgress: ops.progress,
+                          opsMessage: ops.message,
+                          opsIsError: ops.isError,
+                          onDismissOpsMessage: opsNotifier.clearMessage,
                         )
                       : const SizedBox.shrink(),
                 ),

@@ -18,9 +18,16 @@ enum BlockParameterKind {
   slider,
   toggle,
   mode,
+
+  /// Travels in the hardware frame but is not shown (unused by this model).
+  reserved,
 }
 
 /// Immutable parameter definition and current value inside an [EffectBlock].
+///
+/// [value], [min] and [max] are the raw values that travel on the wire.
+/// What the pedal shows is `displayMin + value * displayStep` (or
+/// `options[value]` for list parameters), see [displayText].
 class BlockParameter {
   const BlockParameter({
     required this.id,
@@ -32,6 +39,9 @@ class BlockParameter {
     this.unit = '',
     this.kind = BlockParameterKind.knob,
     this.options = const <String>[],
+    this.displayMin = 0.0,
+    this.displayStep = 1.0,
+    this.decimals = 0,
   });
 
   final String id;
@@ -43,6 +53,36 @@ class BlockParameter {
   final String unit;
   final BlockParameterKind kind;
   final List<String> options;
+  final double displayMin;
+  final double displayStep;
+  final int decimals;
+
+  /// Display value for raw [raw] (e.g. raw 480 → 500 ms).
+  double displayOf(double raw) => displayMin + raw * displayStep;
+
+  double get displayValue => displayOf(value);
+
+  /// Raw value for a display value, clamped to [min]..[max].
+  double rawFor(double display) =>
+      ((display - displayMin) / displayStep).roundToDouble().clamp(min, max);
+
+  /// Text the pedal shows for raw [raw].
+  String textOf(double raw) {
+    if (options.isNotEmpty) {
+      final i = raw.round();
+      return i >= 0 && i < options.length ? options[i] : '$i';
+    }
+    final v = displayOf(raw);
+    if (label.startsWith('PAN')) {
+      final n = v.round();
+      return n == 0 ? 'C' : (n < 0 ? 'L${-n}' : 'R$n');
+    }
+    final n = v.toStringAsFixed(decimals);
+    if (unit.isEmpty) return n;
+    return unit.startsWith(':') ? '$n$unit' : '$n $unit';
+  }
+
+  String get displayText => textOf(value);
 
   BlockParameter copyWith({double? value}) {
     return BlockParameter(
@@ -55,8 +95,27 @@ class BlockParameter {
       unit: unit,
       kind: kind,
       options: options,
+      displayMin: displayMin,
+      displayStep: displayStep,
+      decimals: decimals,
     );
   }
+
+  /// Same definition with a wider [max] (hardware sent a larger raw value).
+  BlockParameter withMax(double newMax) => BlockParameter(
+    id: id,
+    label: label,
+    value: value,
+    defaultValue: defaultValue,
+    min: min,
+    max: newMax,
+    unit: unit,
+    kind: kind,
+    options: options,
+    displayMin: displayMin,
+    displayStep: displayStep,
+    decimals: decimals,
+  );
 }
 
 /// Immutable DSP effect block placed on a signal lane.

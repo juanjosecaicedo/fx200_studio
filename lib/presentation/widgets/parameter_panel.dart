@@ -1,8 +1,12 @@
 import 'package:material_ui/material_ui.dart';
 
+import '../../core/fx200_models.dart';
 import '../../core/theme/editor_theme.dart';
 import '../../domain/entities/preset.dart';
 import 'block_tile.dart';
+import 'cab_designer.dart';
+import 'compressor_designer.dart';
+import 'model_art_view.dart';
 import 'parametric_eq_graph.dart';
 import 'rotary_knob.dart';
 
@@ -19,7 +23,7 @@ class ParameterPanel extends StatelessWidget {
 
   final EffectBlock? block;
   final void Function(String parameterId, double value, {bool recordHistory})
-      onParameterChanged;
+  onParameterChanged;
   final VoidCallback onToggleBypass;
   final ValueChanged<String> onModelChanged;
   final ValueChanged<String> onModeChanged;
@@ -27,9 +31,9 @@ class ParameterPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ext = Theme.of(context).extension<FxEditorThemeExtension>()!;
-    final current = block;
+    final selected = block;
 
-    if (current == null) {
+    if (selected == null) {
       return Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
@@ -46,14 +50,13 @@ class ParameterPanel extends StatelessWidget {
       );
     }
 
+    // Labels/ranges always follow the selected model (official table).
+    final current = Fx200Models.withModelLayout(selected);
     final accent = ext.colorFor(current.category);
-    final isGraphicEq = current.category == EffectCategory.eq &&
-        current.parameters.length >= 6;
-    final eqBands = isGraphicEq
-        ? current.parameters.sublist(0, 6)
-        : const <BlockParameter>[];
+    final isGraphicEq = current.category == EffectCategory.eq;
+    final eqLayout = isGraphicEq ? eqLayoutFor(current) : null;
     final nonEqParams = isGraphicEq
-        ? current.parameters.sublist(6)
+        ? const <BlockParameter>[]
         : current.parameters;
     final knobs = nonEqParams
         .where((p) => p.kind == BlockParameterKind.knob)
@@ -61,6 +64,9 @@ class ParameterPanel extends StatelessWidget {
     final sliders = nonEqParams
         .where((p) => p.kind == BlockParameterKind.slider)
         .toList();
+    final lists = CabDesigner.supports(current)
+        ? const <BlockParameter>[]
+        : nonEqParams.where((p) => p.kind == BlockParameterKind.mode).toList();
     final modes = <String>{
       current.mode,
       'Mono',
@@ -75,7 +81,11 @@ class ParameterPanel extends StatelessWidget {
       decoration: BoxDecoration(
         color: ext.panelSurface,
         borderRadius: BorderRadius.circular(ext.panelRadius),
-        border: Border.all(color: current.enabled ? accent.withValues(alpha: 0.5) : ext.subtleBorder),
+        border: Border.all(
+          color: current.enabled
+              ? accent.withValues(alpha: 0.5)
+              : ext.subtleBorder,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -88,18 +98,11 @@ class ParameterPanel extends StatelessWidget {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    width: 30,
-                    height: 30,
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.16),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      BlockTile.iconFor(current.category),
-                      size: 16,
-                      color: accent,
-                    ),
+                  ModelArtView(
+                    category: current.category,
+                    modelName: current.modelName,
+                    width: 76,
+                    height: 46,
                   ),
                   const SizedBox(width: 8),
                   Column(
@@ -107,9 +110,8 @@ class ParameterPanel extends StatelessWidget {
                     children: [
                       Text(
                         BlockTile.shortLabelFor(current.category),
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: accent,
-                        ),
+                        style: Theme.of(context).textTheme.labelSmall
+                            ?.copyWith(color: accent),
                       ),
                       Text(
                         current.modelName,
@@ -127,6 +129,12 @@ class ParameterPanel extends StatelessWidget {
                     : <String>[current.modelName, ...current.availableModels],
                 ext: ext,
                 onChanged: onModelChanged,
+                itemLeading: (name) => ModelArtView(
+                  category: current.category,
+                  modelName: name,
+                  width: 34,
+                  height: 22,
+                ),
               ),
               _CompactDropdown(
                 label: 'MODE',
@@ -155,11 +163,24 @@ class ParameterPanel extends StatelessWidget {
             ],
           ),
           Divider(height: 20, color: ext.subtleBorder),
-          if (isGraphicEq) ...[
+          if (eqLayout != null) ...[
             ParametricEqGraph(
+              key: ValueKey<String>('${current.id}_${current.modelName}'),
               blockId: current.id,
-              bands: eqBands,
-              extraKnobs: knobs,
+              bands: eqLayout.bands,
+              extraKnobs: eqLayout.knobs,
+              accent: accent,
+              onParameterChanged: onParameterChanged,
+            ),
+          ] else if (CompressorDesigner.supports(current)) ...[
+            CompressorDesigner(
+              block: current,
+              accent: accent,
+              onParameterChanged: onParameterChanged,
+            ),
+          ] else if (CabDesigner.supports(current)) ...[
+            CabDesigner(
+              block: current,
               accent: accent,
               onParameterChanged: onParameterChanged,
             ),
@@ -177,20 +198,38 @@ class ParameterPanel extends StatelessWidget {
                     min: param.min,
                     max: param.max,
                     unit: param.unit,
+                    formatter: param.textOf,
                     accentColor: accent,
-                    onChanged: (v) => onParameterChanged(
+                    onChanged: (v) =>
+                        onParameterChanged(param.id, v, recordHistory: false),
+                    onChangeEnd: (v) =>
+                        onParameterChanged(param.id, v, recordHistory: true),
+                  ),
+              ],
+            ),
+          if (lists.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                for (final param in lists)
+                  _CompactDropdown(
+                    key: ValueKey<String>('${current.id}_${param.id}'),
+                    label: param.label,
+                    showLabel: true,
+                    value: param.displayText,
+                    items: param.options,
+                    ext: ext,
+                    onChanged: (opt) => onParameterChanged(
                       param.id,
-                      v,
-                      recordHistory: false,
-                    ),
-                    onChangeEnd: (v) => onParameterChanged(
-                      param.id,
-                      v,
+                      param.options.indexOf(opt).toDouble(),
                       recordHistory: true,
                     ),
                   ),
               ],
             ),
+          ],
           if (sliders.isNotEmpty) ...[
             if (knobs.isNotEmpty) const SizedBox(height: 12),
             for (final param in sliders)
@@ -233,11 +272,10 @@ class ParameterPanel extends StatelessWidget {
                     SizedBox(
                       width: 72,
                       child: Text(
-                        '${param.value.round()} ${param.unit}'.trim(),
+                        param.displayText,
                         textAlign: TextAlign.right,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: ext.textPrimary,
-                        ),
+                        style: Theme.of(context).textTheme.bodySmall
+                            ?.copyWith(color: ext.textPrimary),
                       ),
                     ),
                   ],
@@ -252,18 +290,27 @@ class ParameterPanel extends StatelessWidget {
 
 class _CompactDropdown extends StatelessWidget {
   const _CompactDropdown({
+    super.key,
     required this.label,
     required this.value,
     required this.items,
     required this.ext,
     required this.onChanged,
+    this.itemLeading,
+    this.showLabel = false,
   });
+
+  /// Shows [label] before the value (parameter lists such as SUB-D).
+  final bool showLabel;
 
   final String label;
   final String value;
   final List<String> items;
   final FxEditorThemeExtension ext;
   final ValueChanged<String> onChanged;
+
+  /// Optional widget shown before each item (e.g. the model illustration).
+  final Widget Function(String item)? itemLeading;
 
   @override
   Widget build(BuildContext context) {
@@ -274,26 +321,51 @@ class _CompactDropdown extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: ext.subtleBorder),
       ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: value,
-          isDense: true,
-          dropdownColor: ext.elevatedSurface,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: ext.textPrimary,
-          ),
-          items: items
-              .map(
-                (item) => DropdownMenuItem<String>(
-                  value: item,
-                  child: Text(item),
+      child: !showLabel
+          ? _dropdown(context)
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: Theme.of(context).textTheme.labelSmall
+                      ?.copyWith(color: ext.textMuted),
                 ),
-              )
-              .toList(),
-          onChanged: (val) {
-            if (val != null) onChanged(val);
-          },
-        ),
+                const SizedBox(width: 8),
+                _dropdown(context),
+              ],
+            ),
+    );
+  }
+
+  Widget _dropdown(BuildContext context) {
+    return DropdownButtonHideUnderline(
+      child: DropdownButton<String>(
+        value: value,
+        isDense: true,
+        dropdownColor: ext.elevatedSurface,
+        style: Theme.of(context).textTheme.bodySmall
+            ?.copyWith(color: ext.textPrimary),
+        items: items
+            .map(
+              (item) => DropdownMenuItem<String>(
+                value: item,
+                child: itemLeading == null
+                    ? Text(item)
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          itemLeading!(item),
+                          const SizedBox(width: 8),
+                          Text(item),
+                        ],
+                      ),
+              ),
+            )
+            .toList(),
+        onChanged: (val) {
+          if (val != null) onChanged(val);
+        },
       ),
     );
   }

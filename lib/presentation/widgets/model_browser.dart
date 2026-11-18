@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../core/theme/editor_theme.dart';
 import '../../domain/entities/preset.dart';
 import 'block_tile.dart';
+import 'model_art_view.dart';
 
 /// Collapsible side browser listing available DSP models by category
 /// with live search and drag-to-chain support.
@@ -206,18 +207,11 @@ class _CatalogItemCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Container(
-            width: 26,
-            height: 26,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.16),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Icon(
-              BlockTile.iconFor(model.category),
-              size: 14,
-              color: accent,
-            ),
+          ModelArtView(
+            category: model.category,
+            modelName: model.name,
+            width: 50,
+            height: 32,
           ),
           const SizedBox(width: 8),
           Expanded(

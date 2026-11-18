@@ -1,9 +1,220 @@
+import 'fx200_param_specs.dart';
 import '../domain/entities/preset.dart';
 
 /// Official Flamma FX200 effect module model catalogs and hardware-aligned
 /// parameter definitions derived from `FX200_Manual_EN.pdf` and `captura.pcapng`.
 class Fx200Models {
   Fx200Models._();
+
+  static const List<String> defaultPresetNames = <String>[
+    'F Deluxe 65',
+    'F Twin 65',
+    'F Bass 59',
+    'Galaxy 50 Clean',
+    'Galaxy 50 Lead',
+    'Galaxy 50 Dist',
+    'Combo 30 Clean',
+    'Combo 30 Drive',
+    'Brit J45 Clean',
+    'Brit J45 Dist',
+    'Brit J800',
+    'Brit J900 Clean',
+    'Brit J900 Dist',
+    'Brit J410 Clean',
+    'Brit J410 Dist',
+    'Brit Plexi',
+    'M9004 Clean',
+    'M9004 Crunch',
+    'M9004 Lead',
+    'Fryman 50 Clean',
+    'Fryman 50 Dist',
+    'Fryman 50 Lead',
+    'Fryman 100 CL',
+    'Fryman 100 Dist',
+    'Fryman 100 Lead',
+    'Archean Clean',
+    'Archean Lead',
+    'Citrus Clean',
+    'Citrus Dist',
+    'Custom 100 CL',
+    'Custom 100 Lead',
+    'US Classic CL',
+    'US Classic Dist',
+    '5153 Green',
+    '5153 Blue',
+    '5153 Red',
+    'Solo 100 Rhythm',
+    'Solo 100 Lead',
+    'Cali TX Clean',
+    'Cali TX Drive',
+    'Cali Rec Clean',
+    'Cali Rec Dist',
+    'Cali V Crunch',
+    'Cali V Dist',
+    'Shivani Clean',
+    'Shivani Drive',
+    'Ecstatic Green',
+    'Ecstatic Blue',
+    'Ecstatic Red',
+    'Herbart CH2',
+    'Herbart CH3',
+    'Dizzy V4 Clean',
+    'Dizzy V4 Crunch',
+    'Dizzy V4 Dist',
+    'Severe Rhythm',
+    'Severe Lead',
+    'Power Rhythm',
+    'Power Lead',
+    'Ballad Chorus',
+    'Sweet Drive',
+    'Pop Drive',
+    'Soloist',
+    '12 Strings Sim',
+    'Country Road',
+    'Jazz Standard',
+    'Funky Groove',
+    'Classic Metal',
+    'Punk Boy',
+    'Popular Band',
+    'Blues Lead',
+    'Crying Man',
+    'Surf Rock',
+    'Pop Rock',
+    'Post Rock',
+    'Fusion Lead',
+    'Metal Core',
+    'Prog Rock',
+    'Neo Soul',
+    'Slap Back',
+    'Slow Gear',
+    'Deep In The Sea',
+    'Into The Sky',
+    'Shabby Room',
+    'Mountain Valley',
+    'Black Hole',
+    'Low Cut Riff',
+    'Fake Bass',
+    'ACG Drive',
+    'Tremolo Clean',
+    'Flanger Dist',
+    'Blue Comet',
+    'Deep Memories',
+    'Emotional Lead',
+    'Dynamic Wah',
+    'Octave Lead',
+    'Bittersweet',
+    'Imagination',
+    'OCT 1 Whammy',
+    'Chorus Lead',
+    'Vinyl Record',
+    'EMMOTION LEAD',
+    'Empty',
+    'Empty',
+    'AMBIENTE',
+    'Worship Clean',
+    'Worship Drive',
+    'WORSHIP STRON',
+    'WORSHIP LEAD',
+    'DOTTED LEAD',
+    'DIRVE WAH',
+    'Empty',
+    'DISTORSION WHA',
+    'CLEAN',
+    'DRIVE',
+    'DIST',
+    'H1 LEAD',
+    'H1 WP',
+    'H1 PHASER',
+    'H1 PITCH',
+    'H1 VIBE ROTARY',
+    'H1 TREMOLO',
+    'H1 TUNE',
+    'H1 SLOW',
+    'H1 PITCH MONO',
+    'H1 PITCH MONO',
+    'TOMALO',
+    'AMBIENTE',
+    'Worship Drive',
+    'AC30 CLEAN',
+    'AC30 DRIVE',
+    'AC30 CRUNCH',
+    'AC30 LEAD',
+    'J45 BRIT CHORUS',
+    'J45 BRIT TREMO',
+    'J45 BRIT DIST',
+    'J45 BRIT 8D',
+    'TL MATCH DC30',
+    'TL MATCH DC30 T',
+    'TL MATCH DC30 C',
+    'TL MATCH DC30 P',
+    'J900 V1 LEAD',
+    'J900 V1 LEAD CH',
+    'J900 V1 LEAD TM',
+    'J900 LEAD CHT',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'Empty',
+    'J WORSHIP VI 1',
+    'J WORSHIP CH 3',
+    'J WORSHIP CH 3',
+    'J WORSHIP LEAD',
+    'CLEAN',
+    'Empty',
+  ];
+
+  static String defaultPresetName(int patchNumber) {
+    if (patchNumber >= 0 && patchNumber < defaultPresetNames.length) {
+      return defaultPresetNames[patchNumber];
+    }
+    return 'FX200 Patch #$patchNumber';
+  }
 
   static const List<String> fxModels = <String>[
     'CS COMP',
@@ -67,8 +278,8 @@ class Fx200Models {
     'FRYMAN 100 CL',
     'FRYMAN 100 OD',
     'FRYMAN 100 DS',
-    'Archean 100 CL',
-    'Archean 100 DS',
+    'ARCHEAN 100 CL',
+    'ARCHEAN 100 DS',
     'CITRUS 100 CL',
     'CITRUS 100 DS',
     'CUSTOM 100 CL',
@@ -142,9 +353,7 @@ class Fx200Models {
     'GATE',
   ];
 
-  static const List<String> fxLoopModels = <String>[
-    'FX LOOP',
-  ];
+  static const List<String> fxLoopModels = <String>['SERIAL', 'PARALLEL'];
 
   static const List<String> eqModels = <String>[
     '6 BAND EQ 1',
@@ -198,6 +407,185 @@ class Fx200Models {
     'MOD',
   ];
 
+  /// CAB TUBE options in the order the pedal lists them (raw 0..4).
+  static const List<String> cabTubeOptions = <String>[
+    'OFF',
+    '6L6',
+    '6V6',
+    'EL34',
+    'EL84',
+  ];
+
+  /// CAB LOW CUT: 0 = OFF, otherwise Hz up to 800.
+  static const double cabLowCutMinHz = 20;
+  static const double cabLowCutMaxHz = 800;
+
+  /// CAB HI CUT: 0 = OFF, otherwise Hz from 3000 up to 20000.
+  static const double cabHiCutMinHz = 3000;
+  static const double cabHiCutMaxHz = 20000;
+
+  static const String eqCustomModel = '4 BAND CUSTOM';
+
+  /// Fixed band centres (Hz) of each 6-band EQ model.
+  static const Map<String, List<double>> eqBandHz = <String, List<double>>{
+    '6 BAND EQ 1': <double>[60, 250, 800, 2000, 4000, 8000],
+    '6 BAND EQ 2': <double>[80, 300, 600, 1000, 2000, 4000],
+    '6 BAND EQ 3': <double>[100, 500, 800, 2000, 4000, 6000],
+  };
+
+  /// Default FREQ 1..4 of 4 BAND CUSTOM (as shown by the pedal).
+  static const List<double> eqCustomDefaultHz = <double>[100, 800, 2000, 4000];
+
+  static bool isEqCustom(String modelName) => modelName == eqCustomModel;
+
+  static String formatHz(double hz) {
+    if (hz >= 1000) {
+      final k = hz / 1000;
+      return k == k.roundToDouble()
+          ? '${k.round()}kHz'
+          : '${k.toStringAsFixed(1)}kHz';
+    }
+    return '${hz.round()}Hz';
+  }
+
+  /// Words carried after the model in each `0x91..0x9A` frame (captures).
+  /// Models that show fewer parameters still send all of them.
+  static const Map<EffectCategory, int> frameWordCount = <EffectCategory, int>{
+    EffectCategory.compressor: 4,
+    EffectCategory.drive: 5,
+    EffectCategory.amp: 6,
+    EffectCategory.cab: 5,
+    EffectCategory.volume: 3,
+    EffectCategory.gate: 3,
+    EffectCategory.eq: 9,
+    EffectCategory.modulation: 5,
+    EffectCategory.delay: 8,
+    EffectCategory.reverb: 4,
+  };
+
+  /// Model list of each FX200 module.
+  static List<String> modelsFor(EffectCategory category) {
+    switch (category) {
+      case EffectCategory.compressor:
+        return fxModels;
+      case EffectCategory.drive:
+        return overdriveModels;
+      case EffectCategory.amp:
+        return ampModels;
+      case EffectCategory.cab:
+        return cabModels;
+      case EffectCategory.volume:
+        return fxLoopModels;
+      case EffectCategory.gate:
+        return nsModels;
+      case EffectCategory.eq:
+        return eqModels;
+      case EffectCategory.modulation:
+        return modModels;
+      case EffectCategory.delay:
+        return delayModels;
+      case EffectCategory.reverb:
+        return reverbModels;
+    }
+  }
+
+  /// Parameter list for EQ model [modelName] (default values).
+  static List<BlockParameter> eqParameters(String modelName) =>
+      parametersForModel(EffectCategory.eq, modelName)!;
+
+  /// Parameter layout of [modelName] with default values, built from the
+  /// official editor's parameter table ([fx200ParamSpecs]) and padded with
+  /// hidden words up to the frame size. Null for CAB (own designer page).
+  static List<BlockParameter>? parametersForModel(
+    EffectCategory category,
+    String modelName,
+  ) {
+    final table = fx200ParamSpecs[category];
+    if (table == null || table.isEmpty) return null;
+    final idx = modelsFor(category)
+        .indexWhere((m) => m.toUpperCase() == modelName.toUpperCase());
+    // Unknown model (e.g. a NAM capture): keep the block's own layout.
+    if (idx < 0 || idx >= table.length) return null;
+    final specs = table[idx];
+    final words = frameWordCount[category] ?? specs.length;
+    var bandFreq = 0;
+    return <BlockParameter>[
+      for (var i = 0; i < specs.length; i++)
+        _fromSpec(
+          'p$i',
+          specs[i],
+          specs[i].label.startsWith('FREQ')
+              ? eqCustomDefaultHz[(bandFreq++).clamp(0, 3)]
+              : null,
+        ),
+      for (var i = specs.length; i < words; i++) _reserved('p$i'),
+    ];
+  }
+
+  /// [block] with its model's labels/ranges applied to its current values
+  /// (e.g. presets saved by older versions of the app).
+  static EffectBlock withModelLayout(EffectBlock block) {
+    final template = parametersForModel(block.category, block.modelName);
+    if (template == null) return block;
+    final params = <BlockParameter>[
+      for (var i = 0; i < template.length; i++)
+        if (i < block.parameters.length)
+          (block.parameters[i].value > template[i].max
+                  ? template[i].withMax(block.parameters[i].value)
+                  : template[i])
+              .copyWith(value: block.parameters[i].value)
+        else
+          template[i],
+    ];
+    return block.copyWith(parameters: params);
+  }
+
+  static BlockParameter _fromSpec(
+    String id,
+    Fx200ParamSpec spec,
+    double? displayDefault,
+  ) {
+    final rawMax = spec.rawMax.toDouble();
+    double display;
+    if (displayDefault != null) {
+      display = displayDefault;
+    } else if (spec.min < 0 && spec.max > 0) {
+      display = 0;
+    } else if (spec.unit == 'ms') {
+      display = 500;
+    } else if (spec.label == 'SAMPLE' || spec.label == 'BIT') {
+      display = spec.max;
+    } else {
+      display = (spec.min + spec.max) / 2;
+    }
+    final raw = spec.isList
+        ? 0.0
+        : ((display - spec.min) / spec.step).roundToDouble().clamp(0, rawMax);
+    return BlockParameter(
+      id: id,
+      label: spec.label,
+      value: raw.toDouble(),
+      defaultValue: raw.toDouble(),
+      max: rawMax,
+      unit: spec.unit,
+      kind: spec.isList ? BlockParameterKind.mode : BlockParameterKind.knob,
+      options: spec.options,
+      displayMin: spec.isList ? 0 : spec.min,
+      displayStep: spec.isList ? 1 : spec.step,
+      // 0.5-step values show one decimal on the pedal ("0.0dB").
+      decimals: spec.step < 1 && spec.decimals == 0 ? 1 : spec.decimals,
+    );
+  }
+
+  static BlockParameter _reserved(String id) => BlockParameter(
+    id: id,
+    label: 'RESERVED',
+    value: 0,
+    defaultValue: 0,
+    max: 65535,
+    kind: BlockParameterKind.reserved,
+  );
+
   static BlockParameter _p(
     String id,
     String label,
@@ -229,12 +617,10 @@ class Fx200Models {
         enabled: true,
         laneIndex: 0,
         slotIndex: 0,
-        parameters: <BlockParameter>[
-          _p('p0', 'SENS', 48),
-          _p('p1', 'ATTACK', 30),
-          _p('p2', 'TONE', 48),
-          _p('p3', 'LEVEL', 78),
-        ],
+        parameters: parametersForModel(
+          EffectCategory.compressor,
+          fxModels.first,
+        )!,
       ),
       EffectBlock(
         id: 'fx200_od',
@@ -244,13 +630,10 @@ class Fx200Models {
         enabled: true,
         laneIndex: 0,
         slotIndex: 1,
-        parameters: <BlockParameter>[
-          _p('p0', 'GAIN', 29),
-          _p('p1', 'TONE', 86),
-          _p('p2', 'LEVEL', 82),
-          _p('p3', 'MIX', 80),
-          _p('p4', 'MODE', 0, max: 10),
-        ],
+        parameters: parametersForModel(
+          EffectCategory.drive,
+          overdriveModels[3],
+        )!,
       ),
       EffectBlock(
         id: 'fx200_amp',
@@ -260,14 +643,7 @@ class Fx200Models {
         enabled: true,
         laneIndex: 0,
         slotIndex: 2,
-        parameters: <BlockParameter>[
-          _p('p0', 'GAIN', 55),
-          _p('p1', 'BASS', 50),
-          _p('p2', 'MIDDLE', 43),
-          _p('p3', 'TREBLE', 64),
-          _p('p4', 'PRESENCE', 57),
-          _p('p5', 'MASTER', 58),
-        ],
+        parameters: parametersForModel(EffectCategory.amp, ampModels.first)!,
       ),
       EffectBlock(
         id: 'fx200_cab',
@@ -278,10 +654,20 @@ class Fx200Models {
         laneIndex: 0,
         slotIndex: 3,
         parameters: <BlockParameter>[
-          _p('p0', 'MIC', 1, max: 10),
-          _p('p1', 'CENTER', 0),
-          _p('p2', 'DISTANCE', 0),
-          _p('p3', 'LOW CUT', 0),
+          // Real CAB page of the pedal: TUBE, LOW CUT, HI CUT, SPACE, LEVEL.
+          // LOW/HI CUT travel as Hz (0 = OFF); verified on all 200 presets.
+          const BlockParameter(
+            id: 'p0',
+            label: 'TUBE',
+            value: 1,
+            defaultValue: 1,
+            max: 4,
+            kind: BlockParameterKind.mode,
+            options: cabTubeOptions,
+          ),
+          _p('p1', 'LOW CUT', 0, max: cabLowCutMaxHz, unit: 'Hz'),
+          _p('p2', 'HI CUT', 0, max: cabHiCutMaxHz, unit: 'Hz'),
+          _p('p3', 'SPACE', 0),
           _p('p4', 'LEVEL', 50),
         ],
       ),
@@ -294,11 +680,10 @@ class Fx200Models {
         laneIndex: 0,
         slotIndex: 4,
         mode: 'SERIAL',
-        parameters: <BlockParameter>[
-          _p('p0', 'SEND', 120, max: 132),
-          _p('p1', 'RETURN', 120, max: 132),
-          _p('p2', 'MIX', 0),
-        ],
+        parameters: parametersForModel(
+          EffectCategory.volume,
+          fxLoopModels.first,
+        )!,
       ),
       EffectBlock(
         id: 'fx200_ns',
@@ -308,11 +693,7 @@ class Fx200Models {
         enabled: false,
         laneIndex: 0,
         slotIndex: 5,
-        parameters: <BlockParameter>[
-          _p('p0', 'THRES', 5),
-          _p('p1', 'DECAY', 0),
-          _p('p2', 'ATTACK', 0),
-        ],
+        parameters: parametersForModel(EffectCategory.gate, nsModels.first)!,
       ),
       EffectBlock(
         id: 'fx200_eq',
@@ -322,17 +703,7 @@ class Fx200Models {
         enabled: false,
         laneIndex: 0,
         slotIndex: 6,
-        parameters: <BlockParameter>[
-          _p('p0', '100Hz', 24, max: 48),
-          _p('p1', '200Hz', 24, max: 48),
-          _p('p2', '400Hz', 24, max: 48),
-          _p('p3', '800Hz', 24, max: 48),
-          _p('p4', '1.6kHz', 24, max: 48),
-          _p('p5', '3.2kHz', 24, max: 48),
-          _p('p6', 'LEVEL', 50),
-          _p('p7', 'LOW CUT', 0),
-          _p('p8', 'HI CUT', 0),
-        ],
+        parameters: eqParameters(eqModels.first),
       ),
       EffectBlock(
         id: 'fx200_mod',
@@ -342,13 +713,10 @@ class Fx200Models {
         enabled: false,
         laneIndex: 0,
         slotIndex: 7,
-        parameters: <BlockParameter>[
-          _p('p0', 'RATE', 40),
-          _p('p1', 'DEPTH', 20),
-          _p('p2', 'TONE', 48),
-          _p('p3', 'MIX', 50, max: 255),
-          _p('p4', 'FEEDBACK', 0),
-        ],
+        parameters: parametersForModel(
+          EffectCategory.modulation,
+          modModels.first,
+        )!,
       ),
       EffectBlock(
         id: 'fx200_dly',
@@ -358,16 +726,10 @@ class Fx200Models {
         enabled: false,
         laneIndex: 0,
         slotIndex: 8,
-        parameters: <BlockParameter>[
-          _p('p0', 'TIME', 430, max: 2000, unit: 'ms'),
-          _p('p1', 'FEEDBACK', 50),
-          _p('p2', 'SUBDIV', 6, max: 16),
-          _p('p3', 'MIX', 40),
-          _p('p4', 'TONE', 50),
-          _p('p5', 'MOD', 0),
-          _p('p6', 'TRAIL', 0, max: 1),
-          _p('p7', 'PINGPONG', 0, max: 1),
-        ],
+        parameters: parametersForModel(
+          EffectCategory.delay,
+          delayModels.first,
+        )!,
       ),
       EffectBlock(
         id: 'fx200_rev',
@@ -377,12 +739,10 @@ class Fx200Models {
         enabled: false,
         laneIndex: 0,
         slotIndex: 9,
-        parameters: <BlockParameter>[
-          _p('p0', 'DECAY', 64),
-          _p('p1', 'MIX', 40),
-          _p('p2', 'PRE-DLY', 5),
-          _p('p3', 'TONE', 40),
-        ],
+        parameters: parametersForModel(
+          EffectCategory.reverb,
+          reverbModels.first,
+        )!,
       ),
     ];
   }
@@ -400,7 +760,10 @@ class Fx200Models {
           name: name,
           category: EffectCategory.compressor,
           description: 'FX200 FX / Compressor / Wah',
-          defaultParameters: paramsFor(EffectCategory.compressor),
+          defaultParameters: parametersForModel(
+            EffectCategory.compressor,
+            name,
+          )!,
         ),
       for (final name in overdriveModels)
         CatalogModel(
@@ -408,7 +771,7 @@ class Fx200Models {
           name: name,
           category: EffectCategory.drive,
           description: 'FX200 Overdrive / Distortion',
-          defaultParameters: paramsFor(EffectCategory.drive),
+          defaultParameters: parametersForModel(EffectCategory.drive, name)!,
         ),
       for (final name in ampModels)
         CatalogModel(
@@ -416,7 +779,7 @@ class Fx200Models {
           name: name,
           category: EffectCategory.amp,
           description: 'FX200 Preamp Model',
-          defaultParameters: paramsFor(EffectCategory.amp),
+          defaultParameters: parametersForModel(EffectCategory.amp, name)!,
         ),
       for (final name in cabModels.take(30))
         CatalogModel(
@@ -432,7 +795,7 @@ class Fx200Models {
           name: name,
           category: EffectCategory.gate,
           description: 'FX200 Noise Suppressor',
-          defaultParameters: paramsFor(EffectCategory.gate),
+          defaultParameters: parametersForModel(EffectCategory.gate, name)!,
         ),
       for (final name in eqModels)
         CatalogModel(
@@ -440,7 +803,7 @@ class Fx200Models {
           name: name,
           category: EffectCategory.eq,
           description: 'FX200 Equalizer',
-          defaultParameters: paramsFor(EffectCategory.eq),
+          defaultParameters: eqParameters(name),
         ),
       for (final name in modModels)
         CatalogModel(
@@ -448,7 +811,10 @@ class Fx200Models {
           name: name,
           category: EffectCategory.modulation,
           description: 'FX200 Modulation',
-          defaultParameters: paramsFor(EffectCategory.modulation),
+          defaultParameters: parametersForModel(
+            EffectCategory.modulation,
+            name,
+          )!,
         ),
       for (final name in delayModels)
         CatalogModel(
@@ -456,7 +822,7 @@ class Fx200Models {
           name: name,
           category: EffectCategory.delay,
           description: 'FX200 Delay',
-          defaultParameters: paramsFor(EffectCategory.delay),
+          defaultParameters: parametersForModel(EffectCategory.delay, name)!,
         ),
       for (final name in reverbModels)
         CatalogModel(
@@ -464,7 +830,7 @@ class Fx200Models {
           name: name,
           category: EffectCategory.reverb,
           description: 'FX200 Reverb',
-          defaultParameters: paramsFor(EffectCategory.reverb),
+          defaultParameters: parametersForModel(EffectCategory.reverb, name)!,
         ),
     ];
   }

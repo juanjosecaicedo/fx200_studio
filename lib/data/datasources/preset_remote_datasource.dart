@@ -34,7 +34,7 @@ class PresetRemoteDataSource {
     final entity = Preset(
       id: 'preset_$patchNumber',
       patchNumber: patchNumber,
-      name: patchNumber == 0 ? 'F Deluxe 65' : 'FX200 Patch #$patchNumber',
+      name: Fx200Models.defaultPresetName(patchNumber),
       activeScene: 'A',
       bpm: 120.0,
       outputLevelDb: 0.0,

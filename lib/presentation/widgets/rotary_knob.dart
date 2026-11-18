@@ -21,6 +21,7 @@ class RotaryKnob extends StatefulWidget {
     this.onChangeEnd,
     this.unit = '',
     this.size = 64,
+    this.formatter,
   });
 
   final String label;
@@ -33,6 +34,9 @@ class RotaryKnob extends StatefulWidget {
   final ValueChanged<double>? onChangeEnd;
   final String unit;
   final double size;
+
+  /// Optional text for a value (e.g. raw 480 → "500 ms").
+  final String Function(double value)? formatter;
 
   @override
   State<RotaryKnob> createState() => _RotaryKnobState();
@@ -50,6 +54,8 @@ class _RotaryKnobState extends State<RotaryKnob> {
   }
 
   String _formatValue(double v) {
+    final f = widget.formatter;
+    if (f != null) return f(v);
     final decimals = (widget.max - widget.min) <= 30 ? 1 : 0;
     final numStr = v.toStringAsFixed(decimals);
     return widget.unit.isEmpty ? numStr : '$numStr ${widget.unit}';
@@ -99,9 +105,11 @@ class _RotaryKnobState extends State<RotaryKnob> {
           onVerticalDragUpdate: (details) {
             final dy = _dragStartDy - details.globalPosition.dy;
             final span = widget.max - widget.min;
-            final next =
-                (_dragStartValue + (dy / 140.0) * span).clamp(widget.min, widget.max);
-            widget.onChanged(next);
+            final next = (_dragStartValue + (dy / 140.0) * span).clamp(
+              widget.min,
+              widget.max,
+            );
+            widget.onChanged(next.roundToDouble());
           },
           onVerticalDragEnd: (_) {
             setState(() => _isDragging = false);
@@ -194,8 +202,10 @@ class _RotaryKnobPainter extends CustomPainter {
     canvas.drawCircle(center, knobRadius, capPaint);
 
     final angle = startAngle + sweepTotal * normalized;
-    final p1 = center + Offset(math.cos(angle), math.sin(angle)) * (knobRadius * 0.28);
-    final p2 = center + Offset(math.cos(angle), math.sin(angle)) * (knobRadius * 0.84);
+    final p1 =
+        center + Offset(math.cos(angle), math.sin(angle)) * (knobRadius * 0.28);
+    final p2 =
+        center + Offset(math.cos(angle), math.sin(angle)) * (knobRadius * 0.84);
 
     final pointerPaint = Paint()
       ..color = isDragging ? accentColor : indicatorColor

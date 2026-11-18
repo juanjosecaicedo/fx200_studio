@@ -22,6 +22,9 @@ class EditorTopBar extends StatefulWidget {
     required this.onToggleBrowser,
     this.isPresetSidebarOpen = true,
     this.onTogglePresetSidebar,
+    this.onOpenSystem,
+    this.onOpenFootswitch,
+    this.onOpenBackup,
   });
 
   final Preset preset;
@@ -38,6 +41,9 @@ class EditorTopBar extends StatefulWidget {
   final VoidCallback onSave;
   final VoidCallback onToggleBrowser;
   final VoidCallback? onTogglePresetSidebar;
+  final VoidCallback? onOpenSystem;
+  final VoidCallback? onOpenFootswitch;
+  final VoidCallback? onOpenBackup;
 
   @override
   State<EditorTopBar> createState() => _EditorTopBarState();
@@ -45,17 +51,22 @@ class EditorTopBar extends StatefulWidget {
 
 class _EditorTopBarState extends State<EditorTopBar> {
   late final TextEditingController _nameController;
+  late final FocusNode _nameFocusNode;
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.preset.name);
+    _nameFocusNode = FocusNode();
   }
 
   @override
   void didUpdateWidget(covariant EditorTopBar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.preset.name != widget.preset.name &&
+    final patchChanged =
+        oldWidget.preset.patchNumber != widget.preset.patchNumber;
+    final nameChanged = oldWidget.preset.name != widget.preset.name;
+    if ((patchChanged || (nameChanged && !_nameFocusNode.hasFocus)) &&
         _nameController.text != widget.preset.name) {
       _nameController.text = widget.preset.name;
     }
@@ -63,6 +74,7 @@ class _EditorTopBarState extends State<EditorTopBar> {
 
   @override
   void dispose() {
+    _nameFocusNode.dispose();
     _nameController.dispose();
     super.dispose();
   }
@@ -102,15 +114,15 @@ class _EditorTopBarState extends State<EditorTopBar> {
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                   onPressed: widget.preset.patchNumber > 0
-                      ? () => widget.onSelectPatch(widget.preset.patchNumber - 1)
+                      ? () =>
+                            widget.onSelectPatch(widget.preset.patchNumber - 1)
                       : null,
                 ),
                 const SizedBox(width: 6),
                 Text(
                   'PATCH ${widget.preset.patchNumber.toString().padLeft(3, '0')}',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: ext.textPrimary,
-                  ),
+                  style: Theme.of(context).textTheme.labelSmall
+                      ?.copyWith(color: ext.textPrimary),
                 ),
                 const SizedBox(width: 6),
                 IconButton(
@@ -119,7 +131,8 @@ class _EditorTopBarState extends State<EditorTopBar> {
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                   onPressed: widget.preset.patchNumber < 199
-                      ? () => widget.onSelectPatch(widget.preset.patchNumber + 1)
+                      ? () =>
+                            widget.onSelectPatch(widget.preset.patchNumber + 1)
                       : null,
                 ),
               ],
@@ -131,15 +144,21 @@ class _EditorTopBarState extends State<EditorTopBar> {
             width: 220,
             child: TextField(
               controller: _nameController,
+              focusNode: _nameFocusNode,
               maxLength: 15,
               onChanged: widget.onRenamePreset,
-              onSubmitted: widget.onRenamePreset,
+              onSubmitted: (value) {
+                widget.onRenamePreset(value);
+                widget.onSave();
+              },
               style: Theme.of(context).textTheme.titleSmall,
               decoration: InputDecoration(
                 counterText: '',
                 isDense: true,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
                 filled: true,
                 fillColor: ext.blockSurface,
                 border: OutlineInputBorder(
@@ -164,9 +183,8 @@ class _EditorTopBarState extends State<EditorTopBar> {
               ),
               child: Text(
                 'UNSAVED',
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: driveColor,
-                ),
+                style: Theme.of(context).textTheme.labelSmall
+                    ?.copyWith(color: driveColor),
               ),
             ),
 
@@ -174,7 +192,16 @@ class _EditorTopBarState extends State<EditorTopBar> {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              for (final scene in const <String>['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'])
+              for (final scene in const <String>[
+                'A',
+                'B',
+                'C',
+                'D',
+                'E',
+                'F',
+                'G',
+                'H',
+              ])
                 Padding(
                   padding: const EdgeInsets.only(right: 4),
                   child: InkWell(
@@ -260,6 +287,24 @@ class _EditorTopBarState extends State<EditorTopBar> {
             ),
             label: const Text('MODELS'),
           ),
+          if (widget.onOpenFootswitch != null)
+            OutlinedButton.icon(
+              onPressed: widget.onOpenFootswitch,
+              icon: const Icon(Icons.radio_button_checked, size: 16),
+              label: const Text('FOOTSWITCH'),
+            ),
+          if (widget.onOpenSystem != null)
+            OutlinedButton.icon(
+              onPressed: widget.onOpenSystem,
+              icon: const Icon(Icons.settings_outlined, size: 16),
+              label: const Text('SYSTEM'),
+            ),
+          if (widget.onOpenBackup != null)
+            OutlinedButton.icon(
+              onPressed: widget.onOpenBackup,
+              icon: const Icon(Icons.backup_outlined, size: 16),
+              label: const Text('BACKUP'),
+            ),
         ],
       ),
     );
