@@ -72,10 +72,9 @@ class ReorderBlocksUseCase {
     if (moving == null) return preset;
 
     final remaining = preset.blocks.where((b) => b.id != blockId).toList();
-    final laneBlocks = remaining
-        .where((b) => b.laneIndex == targetLane)
-        .toList()
-      ..sort((a, b) => a.slotIndex.compareTo(b.slotIndex));
+    final laneBlocks =
+        remaining.where((b) => b.laneIndex == targetLane).toList()
+          ..sort((a, b) => a.slotIndex.compareTo(b.slotIndex));
 
     final clampedSlot = targetSlot.clamp(0, laneBlocks.length);
     laneBlocks.insert(
@@ -89,10 +88,9 @@ class ReorderBlocksUseCase {
     ];
 
     final otherLane = targetLane == 0 ? 1 : 0;
-    final otherBlocks = remaining
-        .where((b) => b.laneIndex == otherLane)
-        .toList()
-      ..sort((a, b) => a.slotIndex.compareTo(b.slotIndex));
+    final otherBlocks =
+        remaining.where((b) => b.laneIndex == otherLane).toList()
+          ..sort((a, b) => a.slotIndex.compareTo(b.slotIndex));
     final reindexedOther = <EffectBlock>[
       for (var i = 0; i < otherBlocks.length; i++)
         otherBlocks[i].copyWith(slotIndex: i),

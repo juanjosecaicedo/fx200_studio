@@ -8,13 +8,13 @@ import 'package:http/http.dart' as http;
 import 'package:material_ui/material_ui.dart';
 
 void main() {
-  testWidgets('EditorTopBar renders scenes A-H, unsaved badge, and actions',
-      (tester) async {
+  testWidgets('EditorTopBar renders scenes A-D, unsaved badge, and actions', (
+    tester,
+  ) async {
     final repo = PresetRepositoryImpl(
       PresetRemoteDataSource(client: http.Client()),
     );
     final preset = await repo.getPreset(0);
-    String selectedScene = 'A';
     var saved = false;
 
     await tester.pumpWidget(
@@ -29,7 +29,6 @@ void main() {
             isBrowserOpen: true,
             onSelectPatch: (_) {},
             onRenamePreset: (_) {},
-            onSelectScene: (s) => selectedScene = s,
             onUndo: () {},
             onRedo: () {},
             onSave: () => saved = true,
@@ -41,19 +40,23 @@ void main() {
 
     expect(find.text('UNSAVED'), findsOneWidget);
     expect(find.text('PATCH 000'), findsOneWidget);
-    for (final s in const <String>['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']) {
+    for (final s in const <String>['A', 'B', 'C', 'D']) {
       expect(find.text(s), findsOneWidget);
     }
-
-    await tester.tap(find.text('C'));
-    expect(selectedScene, 'C');
+    for (final s in const <String>['E', 'F', 'G', 'H']) {
+      expect(find.text(s), findsNothing);
+    }
+    // Scene mode is disabled until the custom firmware exists.
+    expect(
+      find.byTooltip('Scenes: not supported by the current FX200 firmware'),
+      findsOneWidget,
+    );
 
     await tester.tap(find.text('SAVE'));
     expect(saved, isTrue);
   });
 
-  testWidgets('EditorBottomBar renders output dB, BPM, and IN/OUT meters',
-      (tester) async {
+  testWidgets('EditorBottomBar renders BPM and IN/OUT meters', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         theme: buildFxEditorTheme(),
@@ -62,14 +65,12 @@ void main() {
             bpm: 120,
             outputLevelDb: 0.0,
             onBpmChanged: (_) {},
-            onOutputLevelChanged: (_) {},
           ),
         ),
       ),
     );
 
-    expect(find.text('OUTPUT'), findsOneWidget);
-    expect(find.text('0.0 dB'), findsOneWidget);
+    expect(find.text('OUTPUT'), findsNothing);
     expect(find.text('120 BPM'), findsOneWidget);
     expect(find.text('IN'), findsOneWidget);
     expect(find.text('OUT'), findsOneWidget);

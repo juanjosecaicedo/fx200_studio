@@ -2,11 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 /// Compatibility tier for running a `.nam` capture on an embedded Cortex-M7 DSP.
-enum NamDspCompatibility {
-  compatible,
-  heavy,
-  unsupported,
-}
+enum NamDspCompatibility { compatible, heavy, unsupported }
 
 /// Parsed representation of a Neural Amp Modeler (`.nam`) / TONE3000 capture.
 class NamModel {
@@ -38,12 +34,16 @@ class NamModel {
 
   String get modeledBy {
     final author = metadata['modeled_by'];
-    return author is String && author.trim().isNotEmpty ? author.trim() : 'Unknown';
+    return author is String && author.trim().isNotEmpty
+        ? author.trim()
+        : 'Unknown';
   }
 
   String get gear {
     final value = metadata['gear'];
-    return value is String && value.trim().isNotEmpty ? value.trim() : 'Unspecified';
+    return value is String && value.trim().isNotEmpty
+        ? value.trim()
+        : 'Unspecified';
   }
 
   /// Estimates whether the capture fits within a Cortex-M7 real-time DSP budget.
@@ -55,7 +55,9 @@ class NamModel {
       return NamDspCompatibility.unsupported;
     }
     final arch = architecture.toLowerCase();
-    if (arch.contains('lstm') || arch.contains('linear') || arch.contains('a2')) {
+    if (arch.contains('lstm') ||
+        arch.contains('linear') ||
+        arch.contains('a2')) {
       return weightCount <= 4000
           ? NamDspCompatibility.compatible
           : NamDspCompatibility.heavy;
@@ -80,7 +82,9 @@ class NamModel {
   int get estimatedM7CyclesPerSample {
     if (weightCount <= 0) return 0;
     final macCycles = (weightCount * 1.5).round();
-    final archOverhead = architecture.toLowerCase().contains('lstm') ? 180 : 120;
+    final archOverhead = architecture.toLowerCase().contains('lstm')
+        ? 180
+        : 120;
     return macCycles + archOverhead;
   }
 
@@ -88,8 +92,7 @@ class NamModel {
   double get estimatedM7CpuPercent =>
       (estimatedM7CyclesPerSample / 13605.0) * 100.0;
 
-  bool get isSlimmable =>
-      architecture.toLowerCase().contains('slimmable');
+  bool get isSlimmable => architecture.toLowerCase().contains('slimmable');
 
   /// Effective weight count after channel slimming (`slimRatio` in `0.25..1.0`).
   /// Matrix weights scale quadratically with channel width (`r^2`).
@@ -103,7 +106,9 @@ class NamModel {
     final w = effectiveWeightCount(slimRatio);
     if (w <= 0) return 0;
     final macCycles = (w * 1.5).round();
-    final archOverhead = architecture.toLowerCase().contains('lstm') ? 180 : 120;
+    final archOverhead = architecture.toLowerCase().contains('lstm')
+        ? 180
+        : 120;
     return macCycles + archOverhead;
   }
 
@@ -122,8 +127,9 @@ class NamModel {
   /// `[magic "NAM7" (4B), version=1 (u16), slimPct (u16), sampleRateHz (u32), weightCount (u32), ...float32 weights...]`.
   Uint8List exportNam7Binary({double slimRatio = 1.0}) {
     final targetCount = effectiveWeightCount(slimRatio);
-    final exportCount =
-        flatWeights.length < targetCount ? flatWeights.length : targetCount;
+    final exportCount = flatWeights.length < targetCount
+        ? flatWeights.length
+        : targetCount;
     final byteData = ByteData(16 + exportCount * 4);
     byteData.setUint8(0, 0x4e); // 'N'
     byteData.setUint8(1, 0x41); // 'A'
@@ -145,7 +151,9 @@ class NamModel {
   factory NamModel.fromJsonString(String source) {
     final decoded = jsonDecode(source);
     if (decoded is! Map<String, dynamic>) {
-      throw const FormatException('Expected a JSON object at the root of .nam file.');
+      throw const FormatException(
+        'Expected a JSON object at the root of .nam file.',
+      );
     }
 
     final version = decoded['version'];

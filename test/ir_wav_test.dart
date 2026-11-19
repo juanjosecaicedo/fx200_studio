@@ -3,10 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fx200_studio/models/ir_wav.dart';
 
-Uint8List _buildTestWav24({
-  required int sampleRate,
-  required int sampleCount,
-}) {
+Uint8List _buildTestWav24({required int sampleRate, required int sampleCount}) {
   final dataBytes = sampleCount * 3;
   final totalBytes = 44 + dataBytes;
   final buf = Uint8List(totalBytes);

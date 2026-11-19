@@ -6,8 +6,9 @@ import 'package:fx200_studio/presentation/widgets/rotary_knob.dart';
 import 'package:material_ui/material_ui.dart';
 
 void main() {
-  testWidgets('RotaryKnob supports vertical drag and double-tap reset',
-      (tester) async {
+  testWidgets('RotaryKnob supports vertical drag and double-tap reset', (
+    tester,
+  ) async {
     var current = 50.0;
     await tester.pumpWidget(
       MaterialApp(
@@ -45,8 +46,9 @@ void main() {
     expect(current, 25.0);
   });
 
-  testWidgets('ParameterPanel renders knobs, model selector, and bypass',
-      (tester) async {
+  testWidgets('ParameterPanel renders knobs, model selector, and bypass', (
+    tester,
+  ) async {
     const block = EffectBlock(
       id: 'blk_amp',
       category: EffectCategory.amp,
@@ -56,12 +58,7 @@ void main() {
       laneIndex: 0,
       slotIndex: 0,
       parameters: <BlockParameter>[
-        BlockParameter(
-          id: 'gain',
-          label: 'GAIN',
-          value: 54,
-          defaultValue: 50,
-        ),
+        BlockParameter(id: 'gain', label: 'GAIN', value: 54, defaultValue: 50),
       ],
     );
 

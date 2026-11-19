@@ -5,9 +5,11 @@ import 'package:material_ui/material_ui.dart';
 import '../../core/theme/editor_theme.dart';
 import '../../domain/entities/preset.dart';
 import '../../services/fx200_backup.dart';
+import '../../services/fx200_bfl.dart';
 import '../state/backup_notifier.dart';
 import '../state/editor_notifier.dart';
 import 'global_settings_dialog.dart';
+import '../../core/l10n/l10n.dart';
 
 Future<void> showBackupDialog(BuildContext context) {
   return showDialog<void>(
@@ -17,9 +19,14 @@ Future<void> showBackupDialog(BuildContext context) {
   );
 }
 
-const XTypeGroup _backupTypeGroup = XTypeGroup(
-  label: 'FX200 Studio backup',
+XTypeGroup get _backupTypeGroup => XTypeGroup(
+  label: tr('FX200 Studio backup'),
   extensions: <String>[Fx200Backup.fileExtension],
+);
+
+XTypeGroup get _openTypeGroup => XTypeGroup(
+  label: tr('FX200 backup (FX200 Studio or official .bfl)'),
+  extensions: <String>[Fx200Backup.fileExtension, Fx200Bfl.fileExtension],
 );
 
 /// Full-device backup (200 presets + SYSTEM block) and restore.
@@ -33,7 +40,30 @@ class BackupDialog extends ConsumerStatefulWidget {
 class _BackupDialogState extends ConsumerState<BackupDialog> {
   bool _restorePresets = true;
   bool _restoreGlobals = true;
+  bool _restoreIrs = true;
   bool _confirmOverwrite = false;
+
+  /// Backup in the official editor's format (FX200.exe can restore it too).
+  Future<void> _createBfl() async {
+    final now = DateTime.now();
+    String two(int v) => v.toString().padLeft(2, '0');
+    final location = await getSaveLocation(
+      suggestedName:
+          'FX200_${now.year}${two(now.month)}${two(now.day)}.${Fx200Bfl.fileExtension}',
+      acceptedTypeGroups: <XTypeGroup>[
+        XTypeGroup(
+          label: tr('Official FX200 backup'),
+          extensions: const <String>[Fx200Bfl.fileExtension],
+        ),
+      ],
+    );
+    if (location == null) return;
+    var path = location.path;
+    if (!path.toLowerCase().endsWith('.${Fx200Bfl.fileExtension}')) {
+      path = '$path.${Fx200Bfl.fileExtension}';
+    }
+    await ref.read(backupProvider.notifier).createBfl(path);
+  }
 
   Future<void> _createBackup() async {
     final now = DateTime.now();
@@ -43,7 +73,7 @@ class _BackupDialogState extends ConsumerState<BackupDialog> {
         '${two(now.hour)}${two(now.minute)}';
     final location = await getSaveLocation(
       suggestedName: 'fx200_$stamp.${Fx200Backup.fileExtension}',
-      acceptedTypeGroups: const <XTypeGroup>[_backupTypeGroup],
+      acceptedTypeGroups: <XTypeGroup>[_backupTypeGroup],
     );
     if (location == null) return;
     var path = location.path;
@@ -55,7 +85,7 @@ class _BackupDialogState extends ConsumerState<BackupDialog> {
 
   Future<void> _openBackup() async {
     final file = await openFile(
-      acceptedTypeGroups: const <XTypeGroup>[_backupTypeGroup],
+      acceptedTypeGroups: <XTypeGroup>[_openTypeGroup],
     );
     if (file == null) return;
     setState(() => _confirmOverwrite = false);
@@ -92,8 +122,8 @@ class _BackupDialogState extends ConsumerState<BackupDialog> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             DeviceDialogHeader(
-              title: 'BACKUP & RESTORE',
-              subtitle: '200 presets + SYSTEM settings',
+              title: tr('BACKUP & RESTORE'),
+              subtitle: tr('200 presets + SYSTEM settings'),
             ),
             Flexible(
               child: SingleChildScrollView(
@@ -105,41 +135,130 @@ class _BackupDialogState extends ConsumerState<BackupDialog> {
                       Padding(
                         padding: const EdgeInsets.only(bottom: 12),
                         child: Text(
-                          'Connect the FX200 to create or restore a backup. '
-                          'You can still open a backup file to inspect it.',
+                          tr(
+                            'Connect the FX200 to create or restore a backup. You can still open a backup file to inspect it.',
+                          ),
                           style: text.bodySmall?.copyWith(color: warn),
                         ),
                       ),
-                    Text('CREATE BACKUP', style: text.labelSmall),
+                    Text(tr('CREATE BACKUP'), style: text.labelSmall),
                     const SizedBox(height: 4),
                     Text(
-                      'Reads every preset from the pedal (about one minute). '
-                      'The pedal steps through all presets while reading and '
-                      'returns to the current one at the end.',
+                      tr(
+                        'Reads every preset from the pedal (about one minute). The pedal steps through all presets while reading and returns to the current one at the end.',
+                      ),
                       style: text.bodySmall?.copyWith(color: ext.textMuted),
                     ),
                     const SizedBox(height: 10),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: FilledButton.icon(
-                        onPressed: connected && !busy ? _createBackup : null,
-                        icon: const Icon(Icons.download_outlined, size: 16),
-                        label: const Text('BACKUP TO FILE...'),
-                      ),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 8,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: connected && !busy ? _createBackup : null,
+                          icon: const Icon(Icons.download_outlined, size: 16),
+                          label: Text(tr('BACKUP TO FILE...')),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: connected && !busy ? _createBfl : null,
+                          icon: const Icon(Icons.download_outlined, size: 16),
+                          label: Text(tr('OFFICIAL BACKUP (.BFL)...')),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 22),
                     Divider(color: ext.subtleBorder, height: 1),
                     const SizedBox(height: 16),
-                    Text('RESTORE', style: text.labelSmall),
+                    Text(tr('RESTORE'), style: text.labelSmall),
                     const SizedBox(height: 10),
                     Align(
                       alignment: Alignment.centerLeft,
                       child: OutlinedButton.icon(
                         onPressed: busy ? null : _openBackup,
                         icon: const Icon(Icons.folder_open_outlined, size: 16),
-                        label: const Text('OPEN BACKUP...'),
+                        label: Text(tr('OPEN BACKUP...')),
                       ),
                     ),
+                    if (state.loadedBfl != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        tr(
+                          'Official backup: {0}\n200 presets · {1} user IRs · SYSTEM settings',
+                          [
+                            state.loadedPath ?? '',
+                            state.loadedBfl!.irRecords.length,
+                          ],
+                        ),
+                        style: text.bodySmall,
+                      ),
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        value: _restorePresets,
+                        onChanged: busy
+                            ? null
+                            : (v) => setState(() => _restorePresets = v!),
+                        title: Text(tr('Presets (200)')),
+                      ),
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        value: _restoreIrs,
+                        onChanged: busy
+                            ? null
+                            : (v) => setState(() => _restoreIrs = v!),
+                        title: Text(
+                          tr('User IRs ({0})', [
+                            state.loadedBfl!.irRecords.length,
+                          ]),
+                        ),
+                      ),
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        value: _restoreGlobals,
+                        onChanged: busy
+                            ? null
+                            : (v) => setState(() => _restoreGlobals = v!),
+                        title: Text(tr('Global settings and drum machine')),
+                      ),
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        value: _confirmOverwrite,
+                        onChanged: busy
+                            ? null
+                            : (v) => setState(() => _confirmOverwrite = v!),
+                        title: Text(
+                          tr(
+                            'I understand this overwrites the selected data on the pedal',
+                          ),
+                          style: text.bodySmall?.copyWith(color: warn),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(backgroundColor: warn),
+                          onPressed:
+                              connected &&
+                                  !busy &&
+                                  _confirmOverwrite &&
+                                  (_restorePresets ||
+                                      _restoreIrs ||
+                                      _restoreGlobals)
+                              ? () => notifier.restoreLoadedBfl(
+                                  presets: _restorePresets,
+                                  irs: _restoreIrs,
+                                  globals: _restoreGlobals,
+                                )
+                              : null,
+                          icon: const Icon(Icons.upload_outlined, size: 16),
+                          label: Text(tr('RESTORE TO PEDAL')),
+                        ),
+                      ),
+                    ],
                     if (loaded != null) ...[
                       const SizedBox(height: 12),
                       _BackupSummary(backup: loaded, path: state.loadedPath),
@@ -151,8 +270,10 @@ class _BackupDialogState extends ConsumerState<BackupDialog> {
                             ? null
                             : (v) => setState(() => _restorePresets = v!),
                         title: Text(
-                          'Presets (${loaded.restorablePresetCount} '
-                          'of ${loaded.presets.length})',
+                          tr('Presets ({0} of {1})', [
+                            loaded.restorablePresetCount,
+                            loaded.presets.length,
+                          ]),
                         ),
                       ),
                       CheckboxListTile(
@@ -164,8 +285,8 @@ class _BackupDialogState extends ConsumerState<BackupDialog> {
                             : (v) => setState(() => _restoreGlobals = v!),
                         title: Text(
                           loaded.globalSettings == null
-                              ? 'Global settings (not in this backup)'
-                              : 'Global settings (SYSTEM)',
+                              ? tr('Global settings (not in this backup)')
+                              : tr('Global settings (SYSTEM)'),
                         ),
                       ),
                       CheckboxListTile(
@@ -176,8 +297,9 @@ class _BackupDialogState extends ConsumerState<BackupDialog> {
                             ? null
                             : (v) => setState(() => _confirmOverwrite = v!),
                         title: Text(
-                          'I understand this overwrites the selected data on '
-                          'the pedal',
+                          tr(
+                            'I understand this overwrites the selected data on the pedal',
+                          ),
                           style: text.bodySmall?.copyWith(color: warn),
                         ),
                       ),
@@ -193,7 +315,7 @@ class _BackupDialogState extends ConsumerState<BackupDialog> {
                                 )
                               : null,
                           icon: const Icon(Icons.upload_outlined, size: 16),
-                          label: const Text('RESTORE TO PEDAL'),
+                          label: Text(tr('RESTORE TO PEDAL')),
                         ),
                       ),
                     ],
@@ -249,8 +371,11 @@ class _BackupSummary extends StatelessWidget {
           ),
           const SizedBox(height: 2),
           Text(
-            'Created $date · ${backup.presets.length} presets'
-            '${backup.globalSettings != null ? ' · SYSTEM block' : ''}',
+            tr('Created {0} · {1} presets{2}', [
+              date,
+              backup.presets.length,
+              backup.globalSettings != null ? tr(' · SYSTEM block') : '',
+            ]),
             style: text.bodySmall?.copyWith(color: ext.textMuted),
           ),
           if (preview.isNotEmpty)
@@ -298,7 +423,7 @@ class _ProgressPanel extends StatelessWidget {
               ),
             ),
             if (state.isBusy)
-              TextButton(onPressed: onCancel, child: const Text('CANCEL')),
+              TextButton(onPressed: onCancel, child: Text(tr('CANCEL'))),
           ],
         ),
       ],

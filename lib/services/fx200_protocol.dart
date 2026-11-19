@@ -106,6 +106,7 @@ class Fx200Protocol {
   static const int opProbe00 = 0x00; // 07 aa 55 01 00 00 c8 cf
   static const int opHandshake =
       0x84; // payload: [0x84, 0x00, 0x00] -> CRC 0xF6 0xB7
+  static const int opCmd83 = 0x83; // preset upload chunk (see Fx200Pfl)
   static const int opCmdA0 = 0xa0; // len 0x15
   static const int opCmdA1 = 0xa1; // len 0x2f: global SYSTEM settings (46 B)
   static const int opCmdA3 = 0xa3; // len 0x0b: per-preset EXP pedal assignment
@@ -115,7 +116,8 @@ class Fx200Protocol {
       0x86; // single-preset dump (same layout as 0xA5)
   static const int opPresetRead = 0xa6; // len 0x11
   static const int opPresetSave = 0xa8; // len 0x12 (index + 16-byte ASCII name)
-  static const int opCmdAe = 0xae; // len 0x05
+  static const int opCmdAd = 0xad; // len 0x0b: drum machine / metronome
+  static const int opCmdAe = 0xae; // len 0x05: VOLUME pedal range
   static const int opCmdBb =
       0xbb; // len 0x03: "MERGE_STATUS"; last frame after 0xA6
   static const int opCmdE0 = 0xe0; // 07 aa 55 01 00 e0 35 e1
@@ -306,19 +308,23 @@ class Fx200Protocol {
     );
   }
 
-  /// Decodes a `0xAE` global input/output level frame (`body[1]`, 0.5 dB steps: `120 == 0.0 dB`, `0..132` => `-60..+6 dB`).
-  static double? decodeOutputLevelFrame(int opcode, List<int> body) {
-    if (opcode != opCmdAe || body.length < 4) {
-      return null;
-    }
-    final raw = (body[1] & 0xff).clamp(0, 132);
-    return (raw / 2.0) - 60.0;
+  /// Builds a `0xA3` expression-pedal assignment packet.
+  static Uint8List buildExpPacket(Fx200ExpFrame frame) {
+    return buildRawPacket(opCmdA3, frame.encode());
   }
 
-  /// Builds a `0xAE` global input/output level HID packet (`-60.0 .. +6.0 dB`).
-  static Uint8List buildOutputLevelPacket(double db) {
-    final raw = ((db.clamp(-60.0, 6.0) + 60.0) * 2.0).round().clamp(0, 132);
-    return buildHidPacket(payload: <int>[opCmdAe, 0x00, raw, 0x00, 0x00]);
+  /// Builds a `0xAD` drum machine packet.
+  static Uint8List buildDrumPacket(Fx200DrumSettings drum) {
+    return buildRawPacket(opCmdAd, drum.encode());
+  }
+
+  /// Builds a `0xAE` VOLUME-pedal range packet.
+  ///
+  /// Earlier versions of this app took `0xAE` for a global output level and
+  /// wrote `[0, dB, 0, 0]`, which actually set the volume pedal's toe/heel
+  /// range (see [Fx200VolumePedalRange]).
+  static Uint8List buildVolumePedalRangePacket(Fx200VolumePedalRange range) {
+    return buildRawPacket(opCmdAe, range.encode());
   }
 
   /// Decodes a `0xA0` signal-chain order frame (`body[0..9]` 1-based module IDs, `body[10..19]` enabled flags).
@@ -490,16 +496,26 @@ class Fx200Protocol {
     return expected == actual;
   }
 
-  /// Splits a framed packet into 64-byte (`interruptPacketBytes`) USB interrupt chunks.
-  static List<Uint8List> splitInterruptChunks(Uint8List frame) {
-    const chunkSize = Fx200Constants.interruptPacketBytes;
+  /// Splits a packet built by [buildHidPacket] (`[len, 0xAA, 0x55, ...]`)
+  /// into 64-byte interrupt reports, each `[n, n frame bytes]` with
+  /// `n <= 63`. This is how `FX200.exe` writes frames (`0x401680`, 0x3F-byte
+  /// pieces) and how the pedal sends long frames such as `0xA5`; for frames
+  /// up to 63 bytes it is a single report, identical to the packet itself.
+  static List<Uint8List> splitInterruptChunks(Uint8List packet) {
+    const reportSize = Fx200Constants.interruptPacketBytes;
+    const pieceSize = reportSize - 1;
+    final frame = packet.length > 1 && packet[1] == 0xaa
+        ? Uint8List.sublistView(packet, 1)
+        : packet;
     final chunks = <Uint8List>[];
-    for (var offset = 0; offset < frame.length; offset += chunkSize) {
-      final chunk = Uint8List(chunkSize);
-      final remaining = frame.length - offset;
-      final copyLen = remaining < chunkSize ? remaining : chunkSize;
-      chunk.setRange(0, copyLen, frame, offset);
-      chunks.add(chunk);
+    for (var offset = 0; offset < frame.length; offset += pieceSize) {
+      final n = frame.length - offset < pieceSize
+          ? frame.length - offset
+          : pieceSize;
+      final report = Uint8List(reportSize);
+      report[0] = n;
+      report.setRange(1, 1 + n, frame, offset);
+      chunks.add(report);
     }
     return chunks;
   }

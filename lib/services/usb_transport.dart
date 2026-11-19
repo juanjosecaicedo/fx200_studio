@@ -776,50 +776,80 @@ class Fx200UsbTransport {
 
   /// Opens a persistent HID session on Interface 3 (`EP 0x05 OUT` / `EP 0x84 IN`).
   /// Caller must call [Fx200HidSession.close] when finished.
-  ({Fx200HidSession? session, String? error}) openHidSession() {
+  ///
+  /// With [vendorId] / [productId] only that device is opened, and
+  /// [interfaceNumber] / [endpointOut] / [endpointIn] select another HID
+  /// interface (the firmware-update mode enumerates as `0x0483:0x5703` with
+  /// interface 0, `EP 0x02 OUT` / `EP 0x81 IN`).
+  ({Fx200HidSession? session, String? error}) openHidSession({
+    int? vendorId,
+    int? productId,
+    int interfaceNumber = Fx200Constants.hidInterfaceNumber,
+    int endpointOut = Fx200Constants.hidEndpointOut,
+    int endpointIn = Fx200Constants.hidEndpointIn,
+  }) {
     final lib = _tryOpenLibusb();
     if (lib == null) {
-      return (session: null, error: 'libusb-1.0 library not found on this system.');
+      return (
+        session: null,
+        error: 'libusb-1.0 library not found on this system.',
+      );
     }
 
-    final init = lib.lookupFunction<_LibusbInitNative, _LibusbInitDart>('libusb_init');
-    final exit = lib.lookupFunction<_LibusbExitNative, _LibusbExitDart>('libusb_exit');
-    final getList = lib.lookupFunction<_LibusbGetDeviceListNative, _LibusbGetDeviceListDart>(
-      'libusb_get_device_list',
+    final init = lib.lookupFunction<_LibusbInitNative, _LibusbInitDart>(
+      'libusb_init',
     );
-    final freeList = lib.lookupFunction<_LibusbFreeDeviceListNative, _LibusbFreeDeviceListDart>(
-      'libusb_free_device_list',
+    final exit = lib.lookupFunction<_LibusbExitNative, _LibusbExitDart>(
+      'libusb_exit',
     );
-    final getDesc =
-        lib.lookupFunction<_LibusbGetDeviceDescriptorNative, _LibusbGetDeviceDescriptorDart>(
-      'libusb_get_device_descriptor',
+    final getList = lib
+        .lookupFunction<_LibusbGetDeviceListNative, _LibusbGetDeviceListDart>(
+          'libusb_get_device_list',
+        );
+    final freeList = lib
+        .lookupFunction<_LibusbFreeDeviceListNative, _LibusbFreeDeviceListDart>(
+          'libusb_free_device_list',
+        );
+    final getDesc = lib
+        .lookupFunction<
+          _LibusbGetDeviceDescriptorNative,
+          _LibusbGetDeviceDescriptorDart
+        >('libusb_get_device_descriptor');
+    final open = lib.lookupFunction<_LibusbOpenNative, _LibusbOpenDart>(
+      'libusb_open',
     );
-    final open = lib.lookupFunction<_LibusbOpenNative, _LibusbOpenDart>('libusb_open');
-    final close = lib.lookupFunction<_LibusbCloseNative, _LibusbCloseDart>('libusb_close');
-    final driverActive =
-        lib.lookupFunction<_LibusbKernelDriverActiveNative, _LibusbKernelDriverActiveDart>(
-      'libusb_kernel_driver_active',
+    final close = lib.lookupFunction<_LibusbCloseNative, _LibusbCloseDart>(
+      'libusb_close',
     );
-    final detachDriver =
-        lib.lookupFunction<_LibusbDetachKernelDriverNative, _LibusbDetachKernelDriverDart>(
-      'libusb_detach_kernel_driver',
-    );
-    final attachDriver =
-        lib.lookupFunction<_LibusbAttachKernelDriverNative, _LibusbAttachKernelDriverDart>(
-      'libusb_attach_kernel_driver',
-    );
-    final claimInterface =
-        lib.lookupFunction<_LibusbClaimInterfaceNative, _LibusbClaimInterfaceDart>(
-      'libusb_claim_interface',
-    );
-    final releaseInterface =
-        lib.lookupFunction<_LibusbReleaseInterfaceNative, _LibusbReleaseInterfaceDart>(
-      'libusb_release_interface',
-    );
-    final interruptTransfer =
-        lib.lookupFunction<_LibusbInterruptTransferNative, _LibusbInterruptTransferDart>(
-      'libusb_interrupt_transfer',
-    );
+    final driverActive = lib
+        .lookupFunction<
+          _LibusbKernelDriverActiveNative,
+          _LibusbKernelDriverActiveDart
+        >('libusb_kernel_driver_active');
+    final detachDriver = lib
+        .lookupFunction<
+          _LibusbDetachKernelDriverNative,
+          _LibusbDetachKernelDriverDart
+        >('libusb_detach_kernel_driver');
+    final attachDriver = lib
+        .lookupFunction<
+          _LibusbAttachKernelDriverNative,
+          _LibusbAttachKernelDriverDart
+        >('libusb_attach_kernel_driver');
+    final claimInterface = lib
+        .lookupFunction<_LibusbClaimInterfaceNative, _LibusbClaimInterfaceDart>(
+          'libusb_claim_interface',
+        );
+    final releaseInterface = lib
+        .lookupFunction<
+          _LibusbReleaseInterfaceNative,
+          _LibusbReleaseInterfaceDart
+        >('libusb_release_interface');
+    final interruptTransfer = lib
+        .lookupFunction<
+          _LibusbInterruptTransferNative,
+          _LibusbInterruptTransferDart
+        >('libusb_interrupt_transfer');
 
     final ctxPtr = calloc<Pointer<Void>>();
     final listPtr = calloc<Pointer<Pointer<Void>>>();
@@ -835,7 +865,10 @@ class Fx200UsbTransport {
       final count = getList(ctx, listPtr);
       if (count < 0) {
         exit(ctx);
-        return (session: null, error: 'libusb_get_device_list failed ($count).');
+        return (
+          session: null,
+          error: 'libusb_get_device_list failed ($count).',
+        );
       }
 
       final list = listPtr.value;
@@ -846,8 +879,14 @@ class Fx200UsbTransport {
           if (dev == nullptr) break;
           if (getDesc(dev, descPtr) == 0) {
             final ref = descPtr.ref;
-            if (Fx200Constants.supportedVendorIds.contains(ref.idVendor) &&
-                Fx200Constants.usbProductIds.contains(ref.idProduct)) {
+            final matches = vendorId != null || productId != null
+                ? (vendorId == null || ref.idVendor == vendorId) &&
+                      (productId == null || ref.idProduct == productId)
+                : Fx200Constants.supportedVendorIds.contains(ref.idVendor) &&
+                      Fx200Constants.usbProductIds.contains(ref.idProduct) &&
+                      // Never grab the pedal while it is in update mode.
+                      !(ref.idVendor == 0x0483 && ref.idProduct == 0x5703);
+            if (matches) {
               targetDev = dev;
               break;
             }
@@ -869,17 +908,16 @@ class Fx200UsbTransport {
 
       final handle = handlePtr.value;
       var detached = false;
-      if (Platform.isLinux &&
-          driverActive(handle, Fx200Constants.hidInterfaceNumber) == 1) {
-        if (detachDriver(handle, Fx200Constants.hidInterfaceNumber) == 0) {
+      if (Platform.isLinux && driverActive(handle, interfaceNumber) == 1) {
+        if (detachDriver(handle, interfaceNumber) == 0) {
           detached = true;
         }
       }
 
-      final claimRc = claimInterface(handle, Fx200Constants.hidInterfaceNumber);
+      final claimRc = claimInterface(handle, interfaceNumber);
       if (claimRc != 0) {
         if (detached && Platform.isLinux) {
-          attachDriver(handle, Fx200Constants.hidInterfaceNumber);
+          attachDriver(handle, interfaceNumber);
         }
         close(handle);
         exit(ctx);
@@ -888,7 +926,8 @@ class Fx200UsbTransport {
             : '';
         return (
           session: null,
-          error: 'libusb_claim_interface(3) failed ($claimRc)$hint.',
+          error:
+              'libusb_claim_interface($interfaceNumber) failed ($claimRc)$hint.',
         );
       }
 
@@ -902,6 +941,9 @@ class Fx200UsbTransport {
           attachFn: attachDriver,
           releaseFn: releaseInterface,
           interruptFn: interruptTransfer,
+          interfaceNumber: interfaceNumber,
+          endpointOut: endpointOut,
+          endpointIn: endpointIn,
         ),
         error: null,
       );
@@ -925,9 +967,12 @@ class Fx200HidSession {
     required this._attachFn,
     required this._releaseFn,
     required this._interruptFn,
-  })  : _txBuf = calloc<Uint8>(Fx200Constants.interruptPacketBytes),
-        _rxBuf = calloc<Uint8>(Fx200Constants.interruptPacketBytes),
-        _actualLenPtr = calloc<Int32>();
+    required this.interfaceNumber,
+    required this.endpointOut,
+    required this.endpointIn,
+  }) : _txBuf = calloc<Uint8>(Fx200Constants.interruptPacketBytes),
+       _rxBuf = calloc<Uint8>(Fx200Constants.interruptPacketBytes),
+       _actualLenPtr = calloc<Int32>();
 
   final Pointer<Void> _ctx;
   final Pointer<Void> _handle;
@@ -937,6 +982,10 @@ class Fx200HidSession {
   final _LibusbAttachKernelDriverDart _attachFn;
   final _LibusbReleaseInterfaceDart _releaseFn;
   final _LibusbInterruptTransferDart _interruptFn;
+
+  final int interfaceNumber;
+  final int endpointOut;
+  final int endpointIn;
 
   final Pointer<Uint8> _txBuf;
   final Pointer<Uint8> _rxBuf;
@@ -957,7 +1006,7 @@ class Fx200HidSession {
       _actualLenPtr.value = 0;
       final rc = _interruptFn(
         _handle,
-        Fx200Constants.hidEndpointOut,
+        endpointOut,
         _txBuf,
         Fx200Constants.interruptPacketBytes,
         _actualLenPtr,
@@ -974,7 +1023,7 @@ class Fx200HidSession {
     _actualLenPtr.value = 0;
     final rc = _interruptFn(
       _handle,
-      Fx200Constants.hidEndpointIn,
+      endpointIn,
       _rxBuf,
       Fx200Constants.interruptPacketBytes,
       _actualLenPtr,
@@ -994,9 +1043,9 @@ class Fx200HidSession {
   void close() {
     if (_closed) return;
     _closed = true;
-    _releaseFn(_handle, Fx200Constants.hidInterfaceNumber);
+    _releaseFn(_handle, interfaceNumber);
     if (_detachedKernelDriver && Platform.isLinux) {
-      _attachFn(_handle, Fx200Constants.hidInterfaceNumber);
+      _attachFn(_handle, interfaceNumber);
     }
     _closeFn(_handle);
     _exitFn(_ctx);

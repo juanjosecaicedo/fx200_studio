@@ -2,21 +2,23 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../core/theme/editor_theme.dart';
 import '../../domain/entities/preset.dart';
+import '../../core/l10n/l10n.dart';
 
-/// Bottom global control bar: Output volume, BPM / Tap Tempo, and IN/OUT meters.
+/// Bottom global control bar: BPM / Tap Tempo and IN/OUT meters.
+///
+/// There is no OUTPUT control: the `0xAE` frame it used to write is the
+/// expression pedal's VOLUME range, not a global output level.
 class EditorBottomBar extends StatefulWidget {
   const EditorBottomBar({
     super.key,
     required this.bpm,
     required this.outputLevelDb,
     required this.onBpmChanged,
-    required this.onOutputLevelChanged,
   });
 
   final double bpm;
   final double outputLevelDb;
   final ValueChanged<double> onBpmChanged;
-  final ValueChanged<double> onOutputLevelChanged;
 
   @override
   State<EditorBottomBar> createState() => _EditorBottomBarState();
@@ -43,7 +45,6 @@ class _EditorBottomBarState extends State<EditorBottomBar> {
   Widget build(BuildContext context) {
     final ext = Theme.of(context).extension<FxEditorThemeExtension>()!;
     final delayColor = ext.colorFor(EffectCategory.delay);
-    final volColor = ext.colorFor(EffectCategory.volume);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -56,51 +57,11 @@ class _EditorBottomBarState extends State<EditorBottomBar> {
         runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          // Output level
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              GestureDetector(
-                onDoubleTap: () => widget.onOutputLevelChanged(0.0),
-                child: Text(
-                  'OUTPUT',
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
-              ),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: 140,
-                child: SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    activeTrackColor: volColor,
-                    inactiveTrackColor: ext.subtleBorder,
-                    thumbColor: volColor,
-                    trackHeight: 3,
-                    overlayShape: SliderComponentShape.noOverlay,
-                  ),
-                  child: Slider(
-                    value: widget.outputLevelDb.clamp(-60.0, 6.0),
-                    min: -60.0,
-                    max: 6.0,
-                    divisions: 132,
-                    onChanged: widget.onOutputLevelChanged,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                '${widget.outputLevelDb.toStringAsFixed(1)} dB',
-                style: Theme.of(context).textTheme.bodySmall
-                    ?.copyWith(color: ext.textPrimary),
-              ),
-            ],
-          ),
-
           // BPM & Tap Tempo
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('TEMPO', style: Theme.of(context).textTheme.labelSmall),
+              Text(tr('TEMPO'), style: Theme.of(context).textTheme.labelSmall),
               const SizedBox(width: 6),
               IconButton(
                 icon: const Icon(Icons.remove, size: 15),
@@ -112,7 +73,7 @@ class _EditorBottomBarState extends State<EditorBottomBar> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: Text(
-                  '${widget.bpm.round()} BPM',
+                  tr('{0} BPM', [widget.bpm.round()]),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: delayColor,
                     fontWeight: FontWeight.w600,
@@ -137,7 +98,7 @@ class _EditorBottomBarState extends State<EditorBottomBar> {
                   minimumSize: Size.zero,
                 ),
                 child: Text(
-                  'TAP',
+                  tr('TAP'),
                   style: Theme.of(context).textTheme.labelSmall
                       ?.copyWith(color: ext.textPrimary),
                 ),
@@ -149,11 +110,11 @@ class _EditorBottomBarState extends State<EditorBottomBar> {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('IN', style: Theme.of(context).textTheme.labelSmall),
+              Text(tr('IN'), style: Theme.of(context).textTheme.labelSmall),
               const SizedBox(width: 6),
               _LevelMeterBar(level: 0.0, ext: ext),
               const SizedBox(width: 12),
-              Text('OUT', style: Theme.of(context).textTheme.labelSmall),
+              Text(tr('OUT'), style: Theme.of(context).textTheme.labelSmall),
               const SizedBox(width: 6),
               _LevelMeterBar(level: _outLevel, ext: ext),
             ],

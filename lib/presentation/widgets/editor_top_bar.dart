@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../core/theme/editor_theme.dart';
 import '../../domain/entities/preset.dart';
+import '../../core/l10n/l10n.dart';
 
 /// Top hardware control bar: patch/scene selector, editable preset name,
 /// unsaved indicator, undo/redo, save, and model-browser toggle.
@@ -15,7 +16,7 @@ class EditorTopBar extends StatefulWidget {
     required this.isBrowserOpen,
     required this.onSelectPatch,
     required this.onRenamePreset,
-    required this.onSelectScene,
+    this.onSelectScene,
     required this.onUndo,
     required this.onRedo,
     required this.onSave,
@@ -24,6 +25,12 @@ class EditorTopBar extends StatefulWidget {
     this.onTogglePresetSidebar,
     this.onOpenSystem,
     this.onOpenFootswitch,
+    this.onOpenExpPedal,
+    this.onOpenDrum,
+    this.onOpenIr,
+    this.onOpenFirmware,
+    this.language,
+    this.onLanguageChanged,
     this.onOpenBackup,
   });
 
@@ -35,7 +42,10 @@ class EditorTopBar extends StatefulWidget {
   final bool isPresetSidebarOpen;
   final ValueChanged<int> onSelectPatch;
   final ValueChanged<String> onRenamePreset;
-  final ValueChanged<String> onSelectScene;
+
+  /// Scene mode (4 scenes, A-D) needs the custom firmware; until then this is
+  /// null and the scene buttons render disabled.
+  final ValueChanged<String>? onSelectScene;
   final VoidCallback onUndo;
   final VoidCallback onRedo;
   final VoidCallback onSave;
@@ -43,6 +53,14 @@ class EditorTopBar extends StatefulWidget {
   final VoidCallback? onTogglePresetSidebar;
   final VoidCallback? onOpenSystem;
   final VoidCallback? onOpenFootswitch;
+  final VoidCallback? onOpenExpPedal;
+  final VoidCallback? onOpenDrum;
+  final VoidCallback? onOpenIr;
+  final VoidCallback? onOpenFirmware;
+
+  /// Display language and its selector (Software Guide p. 4).
+  final AppLanguage? language;
+  final ValueChanged<AppLanguage>? onLanguageChanged;
   final VoidCallback? onOpenBackup;
 
   @override
@@ -78,6 +96,10 @@ class _EditorTopBarState extends State<EditorTopBar> {
     _nameController.dispose();
     super.dispose();
   }
+
+  /// Highlighted only while scene mode is available.
+  bool _sceneActive(String scene) =>
+      widget.onSelectScene != null && widget.preset.activeScene == scene;
 
   @override
   Widget build(BuildContext context) {
@@ -120,7 +142,9 @@ class _EditorTopBarState extends State<EditorTopBar> {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  'PATCH ${widget.preset.patchNumber.toString().padLeft(3, '0')}',
+                  tr('PATCH {0}', [
+                    widget.preset.patchNumber.toString().padLeft(3, '0'),
+                  ]),
                   style: Theme.of(context).textTheme.labelSmall
                       ?.copyWith(color: ext.textPrimary),
                 ),
@@ -182,64 +206,68 @@ class _EditorTopBarState extends State<EditorTopBar> {
                 border: Border.all(color: driveColor.withValues(alpha: 0.6)),
               ),
               child: Text(
-                'UNSAVED',
+                tr('UNSAVED'),
                 style: Theme.of(context).textTheme.labelSmall
                     ?.copyWith(color: driveColor),
               ),
             ),
 
-          // Scenes A-H (Quad Cortex style)
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final scene in const <String>[
-                'A',
-                'B',
-                'C',
-                'D',
-                'E',
-                'F',
-                'G',
-                'H',
-              ])
-                Padding(
-                  padding: const EdgeInsets.only(right: 4),
-                  child: InkWell(
-                    onTap: () => widget.onSelectScene(scene),
-                    borderRadius: BorderRadius.circular(6),
-                    child: AnimatedContainer(
-                      duration: ext.transitionDuration,
-                      width: 26,
-                      height: 26,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: widget.preset.activeScene == scene
-                            ? delayColor.withValues(alpha: 0.24)
-                            : ext.blockSurface,
+          // Scenes A-D: placeholder for the planned scene mode. The stock
+          // FX200 firmware has no scenes, so the buttons stay disabled until
+          // [onSelectScene] is wired to a firmware that supports them.
+          Tooltip(
+            message: widget.onSelectScene == null
+                ? tr('Scenes: not supported by the current FX200 firmware')
+                : 'Scenes',
+            child: Opacity(
+              opacity: widget.onSelectScene == null ? 0.45 : 1.0,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final scene in kSceneNames)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 4),
+                      child: InkWell(
+                        onTap: widget.onSelectScene == null
+                            ? null
+                            : () => widget.onSelectScene!(scene),
                         borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                          color: widget.preset.activeScene == scene
-                              ? delayColor
-                              : ext.subtleBorder,
-                        ),
-                      ),
-                      child: Text(
-                        scene,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: widget.preset.activeScene == scene
-                              ? ext.textPrimary
-                              : ext.textMuted,
+                        child: AnimatedContainer(
+                          duration: ext.transitionDuration,
+                          width: 26,
+                          height: 26,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: _sceneActive(scene)
+                                ? delayColor.withValues(alpha: 0.24)
+                                : ext.blockSurface,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: _sceneActive(scene)
+                                  ? delayColor
+                                  : ext.subtleBorder,
+                            ),
+                          ),
+                          child: Text(
+                            scene,
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(
+                                  color: _sceneActive(scene)
+                                      ? ext.textPrimary
+                                      : ext.textMuted,
+                                ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ),
-            ],
+                ],
+              ),
+            ),
           ),
 
           // Undo / Redo / Save / Models browser toggle
           IconButton(
-            tooltip: 'Undo',
+            tooltip: tr('Undo'),
             icon: Icon(
               Icons.undo,
               size: 18,
@@ -248,7 +276,7 @@ class _EditorTopBarState extends State<EditorTopBar> {
             onPressed: widget.canUndo ? widget.onUndo : null,
           ),
           IconButton(
-            tooltip: 'Redo',
+            tooltip: tr('Redo'),
             icon: Icon(
               Icons.redo,
               size: 18,
@@ -264,7 +292,7 @@ class _EditorTopBarState extends State<EditorTopBar> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             ),
             icon: const Icon(Icons.save_outlined, size: 16),
-            label: const Text('SAVE'),
+            label: Text(tr('SAVE')),
           ),
           if (widget.onTogglePresetSidebar != null)
             OutlinedButton.icon(
@@ -275,7 +303,7 @@ class _EditorTopBarState extends State<EditorTopBar> {
                     : Icons.list_alt_outlined,
                 size: 16,
               ),
-              label: const Text('PRESETS'),
+              label: Text(tr('PRESETS')),
             ),
           OutlinedButton.icon(
             onPressed: widget.onToggleBrowser,
@@ -285,25 +313,73 @@ class _EditorTopBarState extends State<EditorTopBar> {
                   : Icons.view_sidebar_outlined,
               size: 16,
             ),
-            label: const Text('MODELS'),
+            label: Text(tr('MODELS')),
           ),
           if (widget.onOpenFootswitch != null)
             OutlinedButton.icon(
               onPressed: widget.onOpenFootswitch,
               icon: const Icon(Icons.radio_button_checked, size: 16),
-              label: const Text('FOOTSWITCH'),
+              label: Text(tr('FOOTSWITCH')),
+            ),
+          if (widget.onOpenExpPedal != null)
+            OutlinedButton.icon(
+              onPressed: widget.onOpenExpPedal,
+              icon: const Icon(Icons.swap_vert, size: 16),
+              label: Text(tr('EXP PEDAL')),
+            ),
+          if (widget.onOpenDrum != null)
+            OutlinedButton.icon(
+              onPressed: widget.onOpenDrum,
+              icon: const Icon(Icons.music_note_outlined, size: 16),
+              label: Text(tr('DRUM')),
+            ),
+          if (widget.onOpenIr != null)
+            OutlinedButton.icon(
+              onPressed: widget.onOpenIr,
+              icon: const Icon(Icons.graphic_eq, size: 16),
+              label: Text(tr('IR')),
             ),
           if (widget.onOpenSystem != null)
             OutlinedButton.icon(
               onPressed: widget.onOpenSystem,
               icon: const Icon(Icons.settings_outlined, size: 16),
-              label: const Text('SYSTEM'),
+              label: Text(tr('SYSTEM')),
             ),
           if (widget.onOpenBackup != null)
             OutlinedButton.icon(
               onPressed: widget.onOpenBackup,
               icon: const Icon(Icons.backup_outlined, size: 16),
-              label: const Text('BACKUP'),
+              label: Text(tr('BACKUP')),
+            ),
+          if (widget.language != null && widget.onLanguageChanged != null)
+            PopupMenuButton<AppLanguage>(
+              tooltip: 'Language / Idioma',
+              initialValue: widget.language,
+              onSelected: widget.onLanguageChanged,
+              itemBuilder: (_) => [
+                for (final l in AppLanguage.values)
+                  PopupMenuItem<AppLanguage>(value: l, child: Text(l.label)),
+              ],
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.translate, size: 16),
+                    const SizedBox(width: 4),
+                    Text(
+                      widget.language!.code,
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          if (widget.onOpenFirmware != null)
+            IconButton(
+              tooltip: tr('Firmware update'),
+              onPressed: widget.onOpenFirmware,
+              icon: const Icon(Icons.system_update_alt, size: 18),
             ),
         ],
       ),

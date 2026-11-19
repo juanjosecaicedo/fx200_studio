@@ -13,6 +13,7 @@ import '../../domain/usecases/preset_usecases.dart';
 import '../../services/fx200_hardware_sync.dart';
 import '../../services/fx200_protocol.dart';
 import 'editor_state.dart';
+import '../../core/l10n/l10n.dart';
 
 final httpClientProvider = Provider<http.Client>((ref) {
   final client = http.Client();
@@ -67,9 +68,15 @@ class EditorNotifier extends Notifier<EditorState> {
 
   @override
   EditorState build() {
+    final sync = ref.watch(fx200HardwareSyncProvider);
+    final controlsSub = sync.frames.listen((f) {
+      if (!sync.suppressEditorUpdates) _onControlsFrame(f.opcode, f.body);
+    });
     ref.onDispose(() {
       _autoConnectTimer?.cancel();
       _autoConnectTimer = null;
+      _controlsTimer?.cancel();
+      controlsSub.cancel();
     });
     Future<void>.microtask(() async {
       await loadPreset(0);
@@ -105,6 +112,7 @@ class EditorNotifier extends Notifier<EditorState> {
   }
 
   Future<void> loadPreset(int patchNumber) async {
+    _forgetControls();
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final preset = await ref.read(getPresetUseCaseProvider)(patchNumber);
@@ -132,6 +140,27 @@ class EditorNotifier extends Notifier<EditorState> {
     }
   }
 
+  /// Releases the pedal and stops auto-reconnecting while a firmware update
+  /// runs ([active] = true); resumes auto-connect afterwards.
+  void setFirmwareUpdateActive(bool active) {
+    final sync = ref.read(fx200HardwareSyncProvider);
+    _autoConnectTimer?.cancel();
+    if (active) {
+      _manualDisconnect = true;
+      if (sync.isConnected) sync.disconnect();
+      state = state.copyWith(
+        isHardwareConnected: false,
+        isConnectingHardware: false,
+        isSyncingPresets: false,
+        hardwareStatus: tr('FIRMWARE UPDATE'),
+      );
+    } else {
+      _manualDisconnect = false;
+      state = state.copyWith(hardwareStatus: tr('USB OFFLINE'));
+      unawaited(_tryAutoConnect());
+    }
+  }
+
   Future<void> toggleHardwareConnection() async {
     final sync = ref.read(fx200HardwareSyncProvider);
     if (sync.isConnected) {
@@ -142,7 +171,7 @@ class EditorNotifier extends Notifier<EditorState> {
         isHardwareConnected: false,
         isConnectingHardware: false,
         isSyncingPresets: false,
-        hardwareStatus: 'USB OFFLINE',
+        hardwareStatus: tr('USB OFFLINE'),
       );
       return;
     }
@@ -198,11 +227,13 @@ class EditorNotifier extends Notifier<EditorState> {
           final hwName = _hardwarePresetNames[patch];
           // Changed on the pedal (footswitch / knob): follow it, never
           // answer with a select. Undo history belongs to the old patch.
+          _forgetControls();
           state = state.copyWith(
             hasUnsavedChanges: false,
             undoStack: const <Preset>[],
             redoStack: const <Preset>[],
             preset: current.copyWith(
+              controls: const PresetControls(),
               patchNumber: patch,
               name: (hwName != null && hwName.isNotEmpty)
                   ? hwName
@@ -212,12 +243,6 @@ class EditorNotifier extends Notifier<EditorState> {
         }
       },
       onChainOrderReceived: _applyHardwareChainOrder,
-      onOutputLevelReceived: (db) {
-        final current = state.preset;
-        if (current != null) {
-          state = state.copyWith(preset: current.copyWith(outputLevelDb: db));
-        }
-      },
       onBpmReceived: (bpm) {
         final current = state.preset;
         if (current != null) {
@@ -234,7 +259,7 @@ class EditorNotifier extends Notifier<EditorState> {
         isHardwareConnected: true,
         isConnectingHardware: false,
         isSyncingPresets: true,
-        hardwareStatus: 'SYNCING PRESETS...',
+        hardwareStatus: tr('SYNCING PRESETS...'),
       );
       // Only read: the 0xE0 dump ends with the pedal's own active patch
       // (`A6 [patch]`) and its module frames, which onActivePatchReceived /
@@ -248,7 +273,9 @@ class EditorNotifier extends Notifier<EditorState> {
         isHardwareConnected: false,
         isConnectingHardware: false,
         isSyncingPresets: false,
-        hardwareStatus: silentOnFail ? 'WAITING FX200 USB...' : result.message,
+        hardwareStatus: silentOnFail
+            ? tr('WAITING FX200 USB...')
+            : result.message,
       );
     }
   }
@@ -282,7 +309,7 @@ class EditorNotifier extends Notifier<EditorState> {
           updatedParams.add(
             BlockParameter(
               id: 'p$i',
-              label: 'RESERVED',
+              label: tr('RESERVED'),
               value: hwVal,
               defaultValue: hwVal,
               max: 65535,
@@ -530,16 +557,8 @@ class EditorNotifier extends Notifier<EditorState> {
 
   void selectScene(String scene) {
     final current = state.preset;
-    if (current == null) return;
+    if (current == null || !kSceneNames.contains(scene)) return;
     _commitPreset(current.copyWith(activeScene: scene));
-  }
-
-  void toggleParallelSplit() {
-    final current = state.preset;
-    if (current == null) return;
-    _commitPreset(
-      current.copyWith(parallelSplitEnabled: !current.parallelSplitEnabled),
-    );
   }
 
   void setBpm(double bpm) {
@@ -567,40 +586,263 @@ class EditorNotifier extends Notifier<EditorState> {
     }
   }
 
-  void setOutputLevelDb(double db) {
-    final current = state.preset;
-    if (current == null) return;
-    final clamped = db.clamp(-60.0, 6.0);
-    _commitPreset(current.copyWith(outputLevelDb: clamped));
-    if (state.isHardwareConnected) {
-      ref.read(fx200HardwareSyncProvider).sendOutputLevelDb(clamped);
-    }
-  }
-
   void undo() {
     if (!state.canUndo || state.preset == null) return;
+    final from = state.preset!;
     final prev = state.undoStack.last;
     final newUndo = state.undoStack.sublist(0, state.undoStack.length - 1);
-    final newRedo = <Preset>[...state.redoStack, state.preset!];
+    final newRedo = <Preset>[...state.redoStack, from];
     state = state.copyWith(
       preset: prev,
       undoStack: newUndo,
       redoStack: newRedo,
       hasUnsavedChanges: true,
     );
+    _syncHardwareTo(from, prev);
   }
 
   void redo() {
     if (!state.canRedo || state.preset == null) return;
+    final from = state.preset!;
     final next = state.redoStack.last;
     final newRedo = state.redoStack.sublist(0, state.redoStack.length - 1);
-    final newUndo = <Preset>[...state.undoStack, state.preset!];
+    final newUndo = <Preset>[...state.undoStack, from];
     state = state.copyWith(
       preset: next,
       undoStack: newUndo,
       redoStack: newRedo,
       hasUnsavedChanges: true,
     );
+    _syncHardwareTo(from, next);
+  }
+
+  /// Sends to the pedal whatever differs between [from] and [to] after an
+  /// undo / redo (modules, chain order, tempo, footswitch, EXP, volume), so
+  /// the pedal sounds like the editor shows.
+  void _syncHardwareTo(Preset from, Preset to) {
+    if (!state.isHardwareConnected) return;
+    final sync = ref.read(fx200HardwareSyncProvider);
+    for (final b in to.blocks) {
+      final old = from.blocks.where((x) => x.id == b.id).firstOrNull;
+      if (old == null || !_sameBlock(old, b)) {
+        sync.sendBlockUpdate(b, force: true);
+      }
+    }
+    if (_chainSignature(from) != _chainSignature(to)) {
+      sync.sendChainOrder(to.blocks);
+    }
+    if (from.bpm != to.bpm) sync.sendTapTempoBpm(to.bpm);
+    _flushControls();
+  }
+
+  static bool _sameBlock(EffectBlock a, EffectBlock b) {
+    if (a.enabled != b.enabled ||
+        a.modelName != b.modelName ||
+        a.parameters.length != b.parameters.length) {
+      return false;
+    }
+    for (var i = 0; i < a.parameters.length; i++) {
+      if (a.parameters[i].value != b.parameters[i].value) return false;
+    }
+    return true;
+  }
+
+  static String _chainSignature(Preset p) {
+    final sorted = List<EffectBlock>.of(p.blocks)
+      ..sort((a, b) => a.slotIndex.compareTo(b.slotIndex));
+    return sorted.map((b) => '${b.category.name}:${b.enabled}').join(',');
+  }
+
+  // ---------------------------------------------------------------------
+  // Per-preset controls (footswitch 0xA4, expression pedal 0xA3, volume
+  // range 0xAE): part of the preset, so they share its undo history and its
+  // single "unsaved" state. Edits are sent as a diff against what the pedal
+  // is known to hold (`_sentControls`).
+
+  static const Duration _controlsDebounce = Duration(milliseconds: 80);
+  static const Duration _expBurstGap = Duration(milliseconds: 400);
+  static const Duration _echoWindow = Duration(milliseconds: 400);
+
+  PresetControls? _sentControls;
+  Timer? _controlsTimer;
+  DateTime? _controlsSentAt;
+  DateTime? _expRxAt;
+
+  void _forgetControls() {
+    _controlsTimer?.cancel();
+    _sentControls = null;
+    _expRxAt = null;
+  }
+
+  bool get _isControlsEcho {
+    final t = _controlsSentAt;
+    return t != null && DateTime.now().difference(t) < _echoWindow;
+  }
+
+  /// Adopts controls reported by the pedal (never marks the preset dirty).
+  void _applyHardwareControls(PresetControls next) {
+    final current = state.preset;
+    if (current == null) return;
+    _sentControls = next;
+    state = state.copyWith(preset: current.copyWith(controls: next));
+  }
+
+  void _onControlsFrame(int opcode, List<int> body) {
+    final current = state.preset;
+    if (current == null) return;
+    final c = current.controls;
+    if (opcode == Fx200Protocol.opCmdA4) {
+      final fs = Fx200Protocol.decodeTapTempoFrame(opcode, body);
+      if (fs == null) return;
+      _applyHardwareControls(
+        c.copyWith(
+          footswitchKnown: true,
+          footswitchMode: fs.fsMode,
+          ctrlMask: fs.ctrlMask,
+        ),
+      );
+    } else if (opcode == Fx200Protocol.opCmdAe) {
+      final r = Fx200VolumePedalRange.decode(body);
+      if (r == null || _isControlsEcho) return;
+      _applyHardwareControls(
+        c.copyWith(volumeKnown: true, volumeMin: r.min, volumeMax: r.max),
+      );
+    } else if (opcode == Fx200Protocol.opCmdA3) {
+      final f = Fx200ExpFrame.decode(body);
+      if (f == null || _isControlsEcho) return;
+      final now = DateTime.now();
+      final last = _expRxAt;
+      _expRxAt = now;
+      // One preset reports its assignments as a burst of 0xA3 frames; a
+      // frame after a pause starts the set of a (newly selected) preset.
+      var next = c;
+      if (!c.expKnown || last == null || now.difference(last) > _expBurstGap) {
+        next = next.copyWith(
+          expKnown: true,
+          exp1: const <ExpAssignment>[],
+          exp2: const <ExpAssignment>[],
+        );
+      }
+      if (f.pedal == Fx200ExpFrame.pedalInternal) {
+        next = next.copyWith(exp1Mode: f.mode);
+      }
+      if (f.pedal <= Fx200ExpFrame.pedalExternal) {
+        final list = [
+          for (final a in next.assignmentsFor(f.pedal))
+            if (!a.sameTarget(f.moduleSlot, f.paramIndex)) a,
+          if (f.assigned)
+            ExpAssignment(
+              moduleSlot: f.moduleSlot,
+              paramIndex: f.paramIndex,
+              min: f.min,
+              max: f.max,
+            ),
+        ];
+        next = next.withAssignments(f.pedal, list);
+      }
+      _applyHardwareControls(next);
+    }
+  }
+
+  /// Edits the active preset's controls: recorded in the undo history,
+  /// marks the preset unsaved and sends only what changed to the pedal
+  /// ([recordHistory] false while a slider is dragged: debounced, no
+  /// history entry).
+  void editControls(PresetControls next, {bool recordHistory = true}) {
+    final current = state.preset;
+    if (current == null) return;
+    _commitPreset(
+      current.copyWith(controls: next),
+      recordHistory: recordHistory,
+    );
+    _controlsTimer?.cancel();
+    if (recordHistory) {
+      _flushControls();
+    } else {
+      _controlsTimer = Timer(_controlsDebounce, _flushControls);
+    }
+  }
+
+  void _flushControls() {
+    _controlsTimer?.cancel();
+    final preset = state.preset;
+    if (preset == null || !state.isHardwareConnected) return;
+    final now = preset.controls;
+    final was = _sentControls ?? const PresetControls();
+    final sync = ref.read(fx200HardwareSyncProvider);
+    var sent = false;
+
+    if (now.footswitchKnown &&
+        (now.footswitchMode != was.footswitchMode ||
+            now.ctrlMask != was.ctrlMask)) {
+      sync.sendFootswitch(
+        Fx200FootswitchConfig(
+          mode: now.footswitchMode,
+          ctrlMask: now.ctrlMask,
+          bpm: preset.bpm.round(),
+        ),
+      );
+    }
+    if (now.expKnown) {
+      var pedal1Sent = false;
+      for (final pedal in const <int>[0, 1]) {
+        final mode = pedal == 0 ? now.exp1Mode : Fx200ExpFrame.modeExpression;
+        final before = was.assignmentsFor(pedal);
+        final after = now.assignmentsFor(pedal);
+        Fx200ExpFrame frame(ExpAssignment a, {required bool assigned}) =>
+            Fx200ExpFrame(
+              pedal: pedal,
+              mode: mode,
+              moduleSlot: a.moduleSlot,
+              paramIndex: a.paramIndex,
+              min: assigned ? a.min : 0,
+              max: assigned ? a.max : 0,
+              assigned: assigned,
+            );
+        for (final a in after) {
+          final old = before
+              .where((x) => x.sameTarget(a.moduleSlot, a.paramIndex))
+              .firstOrNull;
+          if (old != a || (pedal == 0 && now.exp1Mode != was.exp1Mode)) {
+            sync.sendExpAssignment(frame(a, assigned: true));
+            sent = true;
+            if (pedal == 0) pedal1Sent = true;
+          }
+        }
+        for (final a in before) {
+          if (!after.any((x) => x.sameTarget(a.moduleSlot, a.paramIndex))) {
+            sync.sendExpAssignment(frame(a, assigned: false));
+            sent = true;
+            if (pedal == 0) pedal1Sent = true;
+          }
+        }
+      }
+      // The PEDAL 1 mode travels in every 0xA3 frame: with nothing else to
+      // send, send the pedal's own "nothing assigned" frame with the mode.
+      if (now.exp1Mode != was.exp1Mode && !pedal1Sent) {
+        sync.sendExpAssignment(
+          Fx200ExpFrame(
+            pedal: Fx200ExpFrame.pedalInternal,
+            mode: now.exp1Mode,
+            moduleSlot: 0,
+            paramIndex: 0,
+            min: 0,
+            max: 0,
+            assigned: false,
+          ),
+        );
+        sent = true;
+      }
+    }
+    if (now.volumeKnown &&
+        (now.volumeMin != was.volumeMin || now.volumeMax != was.volumeMax)) {
+      sync.sendVolumePedalRange(
+        Fx200VolumePedalRange(min: now.volumeMin, max: now.volumeMax),
+      );
+      sent = true;
+    }
+    if (sent) _controlsSentAt = DateTime.now();
+    _sentControls = now;
   }
 
   void _commitPreset(Preset next, {bool recordHistory = true}) {

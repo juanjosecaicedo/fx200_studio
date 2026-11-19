@@ -5,30 +5,24 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/fx200_protocol.dart';
 import 'editor_notifier.dart';
 
-/// Global SYSTEM settings (`0xA1`) and the active preset's footswitch
-/// assignment (`0xA4`) as last reported by the pedal.
+/// Global (not per-preset) device state: SYSTEM settings (`0xA1`) and the
+/// drum machine (`0xAD`). The footswitch belongs to the preset and lives in
+/// `Preset.controls` (see `EditorNotifier.editControls`).
 class DeviceSettingsState {
-  const DeviceSettingsState({
-    this.global,
-    this.footswitch,
-    this.footswitchUnsaved = false,
-  });
+  const DeviceSettingsState({this.global, this.drum});
 
   final Fx200GlobalSettings? global;
-  final Fx200FootswitchConfig? footswitch;
 
-  /// True after a footswitch change until the preset is saved (`0xA8`).
-  final bool footswitchUnsaved;
+  /// Drum machine / metronome (`0xAD`), null until the pedal reports it.
+  final Fx200DrumSettings? drum;
 
   DeviceSettingsState copyWith({
     Fx200GlobalSettings? global,
-    Fx200FootswitchConfig? footswitch,
-    bool? footswitchUnsaved,
+    Fx200DrumSettings? drum,
   }) {
     return DeviceSettingsState(
       global: global ?? this.global,
-      footswitch: footswitch ?? this.footswitch,
-      footswitchUnsaved: footswitchUnsaved ?? this.footswitchUnsaved,
+      drum: drum ?? this.drum,
     );
   }
 }
@@ -42,6 +36,33 @@ class DeviceSettingsNotifier extends Notifier<DeviceSettingsState> {
   static const Duration _sendDebounce = Duration(milliseconds: 120);
 
   Timer? _globalSendTimer;
+  Timer? _drumSendTimer;
+  DateTime? _drumSentAt;
+
+  /// A `0xAD` arriving right after our own write is the pedal echoing it;
+  /// ignoring it keeps a slider from jumping back while it is dragged.
+  bool _isDrumEcho() {
+    final t = _drumSentAt;
+    return t != null &&
+        DateTime.now().difference(t) < const Duration(milliseconds: 300);
+  }
+
+  /// Applies [next] locally and writes it to the pedal (debounced while a
+  /// slider is dragged). The drum machine is global: no preset save needed.
+  void updateDrum(Fx200DrumSettings next, {bool debounce = false}) {
+    state = state.copyWith(drum: next);
+    void write() {
+      _drumSentAt = DateTime.now();
+      ref.read(fx200HardwareSyncProvider).sendDrum(next);
+    }
+
+    _drumSendTimer?.cancel();
+    if (debounce) {
+      _drumSendTimer = Timer(_sendDebounce, write);
+    } else {
+      write();
+    }
+  }
 
   @override
   DeviceSettingsState build() {
@@ -55,21 +76,20 @@ class DeviceSettingsNotifier extends Notifier<DeviceSettingsState> {
         state = state.copyWith(global: global);
         return;
       }
-      if (frame.opcode == Fx200Protocol.opCmdA4 &&
-          !sync.suppressEditorUpdates) {
-        state = state.copyWith(
-          footswitch: sync.lastFootswitch,
-          footswitchUnsaved: false,
-        );
+      if (frame.opcode == Fx200Protocol.opCmdAd) {
+        final drum = Fx200DrumSettings.decode(frame.body);
+        if (drum != null && !_isDrumEcho()) state = state.copyWith(drum: drum);
+        return;
       }
     });
     ref.onDispose(() {
       sub.cancel();
       _globalSendTimer?.cancel();
+      _drumSendTimer?.cancel();
     });
     return DeviceSettingsState(
       global: sync.lastGlobalSettings,
-      footswitch: sync.isConnected ? sync.lastFootswitch : null,
+      drum: sync.lastDrum,
     );
   }
 
@@ -81,20 +101,5 @@ class DeviceSettingsNotifier extends Notifier<DeviceSettingsState> {
     _globalSendTimer = Timer(_sendDebounce, () {
       ref.read(fx200HardwareSyncProvider).sendGlobalSettings(next);
     });
-  }
-
-  /// Sends a new footswitch mode / CTRL assignment. The BPM part of `0xA4`
-  /// is owned by the editor's tempo control, so the latest value is kept.
-  void updateFootswitch(Fx200FootswitchConfig next) {
-    final sync = ref.read(fx200HardwareSyncProvider);
-    final merged = next.copyWith(bpm: sync.lastFootswitch.bpm);
-    state = state.copyWith(footswitch: merged, footswitchUnsaved: true);
-    sync.sendFootswitch(merged);
-  }
-
-  /// Persists the footswitch assignment by saving the active preset (`0xA8`).
-  Future<void> saveFootswitchToPreset() async {
-    await ref.read(editorProvider.notifier).saveCurrentPreset();
-    state = state.copyWith(footswitchUnsaved: false);
   }
 }

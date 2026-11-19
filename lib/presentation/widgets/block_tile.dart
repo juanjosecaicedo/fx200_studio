@@ -181,11 +181,7 @@ class _TileBody extends StatelessWidget {
                     const SizedBox(width: 2),
                     InkWell(
                       onTap: onRemove,
-                      child: Icon(
-                        Icons.close,
-                        size: 12,
-                        color: ext.textMuted,
-                      ),
+                      child: Icon(Icons.close, size: 12, color: ext.textMuted),
                     ),
                   ],
                 ],
@@ -200,9 +196,8 @@ class _TileBody extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 BlockTile.shortLabelFor(block.category),
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: effectiveAccent,
-                ),
+                style: Theme.of(context).textTheme.labelSmall
+                    ?.copyWith(color: effectiveAccent),
               ),
               const SizedBox(height: 2),
               Text(

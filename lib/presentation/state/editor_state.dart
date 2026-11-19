@@ -76,8 +76,9 @@ class EditorState {
   }) {
     return EditorState(
       preset: preset ?? this.preset,
-      selectedBlockId:
-          clearSelectedBlock ? null : (selectedBlockId ?? this.selectedBlockId),
+      selectedBlockId: clearSelectedBlock
+          ? null
+          : (selectedBlockId ?? this.selectedBlockId),
       catalog: catalog ?? this.catalog,
       undoStack: undoStack ?? this.undoStack,
       redoStack: redoStack ?? this.redoStack,

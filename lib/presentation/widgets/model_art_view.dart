@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../core/fx200_model_art.dart';
 import '../../core/theme/editor_theme.dart';
 import '../../domain/entities/preset.dart';
+import '../../core/l10n/l10n.dart';
 
 /// Original vector illustration of an FX200 model (amp, cab, pedal or effect
 /// glyph). See [Fx200ModelArt] for the per-model specs.
@@ -27,7 +28,7 @@ class ModelArtView extends StatelessWidget {
     final ext = Theme.of(context).extension<FxEditorThemeExtension>()!;
     final art = Fx200ModelArt.artFor(category, modelName);
     return Semantics(
-      label: '$modelName illustration',
+      label: tr('{0} illustration', [modelName]),
       image: true,
       child: SizedBox(
         width: width,

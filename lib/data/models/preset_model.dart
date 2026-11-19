@@ -41,16 +41,16 @@ class BlockParameterModel {
   }
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'id': id,
-        'label': label,
-        'value': value,
-        'defaultValue': defaultValue,
-        'min': min,
-        'max': max,
-        'unit': unit,
-        'kind': kind,
-        'options': options,
-      };
+    'id': id,
+    'label': label,
+    'value': value,
+    'defaultValue': defaultValue,
+    'min': min,
+    'max': max,
+    'unit': unit,
+    'kind': kind,
+    'options': options,
+  };
 
   BlockParameter toEntity() {
     return BlockParameter(
@@ -128,16 +128,16 @@ class EffectBlockModel {
   }
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'id': id,
-        'category': category,
-        'modelName': modelName,
-        'availableModels': availableModels,
-        'enabled': enabled,
-        'laneIndex': laneIndex,
-        'slotIndex': slotIndex,
-        'parameters': parameters.map((p) => p.toJson()).toList(),
-        'mode': mode,
-      };
+    'id': id,
+    'category': category,
+    'modelName': modelName,
+    'availableModels': availableModels,
+    'enabled': enabled,
+    'laneIndex': laneIndex,
+    'slotIndex': slotIndex,
+    'parameters': parameters.map((p) => p.toJson()).toList(),
+    'mode': mode,
+  };
 
   EffectBlock toEntity() {
     return EffectBlock(
@@ -182,7 +182,6 @@ class PresetModel {
     required this.activeScene,
     required this.bpm,
     required this.outputLevelDb,
-    required this.parallelSplitEnabled,
     required this.blocks,
   });
 
@@ -192,7 +191,6 @@ class PresetModel {
   final String activeScene;
   final double bpm;
   final double outputLevelDb;
-  final bool parallelSplitEnabled;
   final List<EffectBlockModel> blocks;
 
   factory PresetModel.fromJson(Map<String, dynamic> json) {
@@ -203,7 +201,6 @@ class PresetModel {
       activeScene: json['activeScene'] as String? ?? 'A',
       bpm: (json['bpm'] as num?)?.toDouble() ?? 120.0,
       outputLevelDb: (json['outputLevelDb'] as num?)?.toDouble() ?? 0.0,
-      parallelSplitEnabled: json['parallelSplitEnabled'] as bool? ?? false,
       blocks: (json['blocks'] as List<dynamic>? ?? const <dynamic>[])
           .map((e) => EffectBlockModel.fromJson(e as Map<String, dynamic>))
           .toList(),
@@ -211,15 +208,14 @@ class PresetModel {
   }
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'id': id,
-        'patchNumber': patchNumber,
-        'name': name,
-        'activeScene': activeScene,
-        'bpm': bpm,
-        'outputLevelDb': outputLevelDb,
-        'parallelSplitEnabled': parallelSplitEnabled,
-        'blocks': blocks.map((b) => b.toJson()).toList(),
-      };
+    'id': id,
+    'patchNumber': patchNumber,
+    'name': name,
+    'activeScene': activeScene,
+    'bpm': bpm,
+    'outputLevelDb': outputLevelDb,
+    'blocks': blocks.map((b) => b.toJson()).toList(),
+  };
 
   Preset toEntity() {
     return Preset(
@@ -229,7 +225,6 @@ class PresetModel {
       activeScene: activeScene,
       bpm: bpm,
       outputLevelDb: outputLevelDb,
-      parallelSplitEnabled: parallelSplitEnabled,
       blocks: blocks.map((b) => b.toEntity()).toList(),
     );
   }
@@ -242,7 +237,6 @@ class PresetModel {
       activeScene: entity.activeScene,
       bpm: entity.bpm,
       outputLevelDb: entity.outputLevelDb,
-      parallelSplitEnabled: entity.parallelSplitEnabled,
       blocks: entity.blocks.map(EffectBlockModel.fromEntity).toList(),
     );
   }

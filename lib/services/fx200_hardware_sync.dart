@@ -4,7 +4,10 @@ import 'dart:typed_data';
 
 import '../core/fx200_constants.dart';
 import '../domain/entities/preset.dart';
+import '../core/l10n/l10n.dart';
 import 'fx200_backup.dart';
+import 'fx200_ir.dart';
+import 'fx200_opcodes.dart';
 import 'fx200_protocol.dart';
 import 'usb_transport.dart';
 
@@ -23,9 +26,16 @@ class Fx200HardwareSync implements Fx200DeviceLink {
   /// Raw `0xA5`/`0x86` dump chunks: preset index → chunk index → 512 bytes.
   final Map<int, Map<int, Uint8List>> _presetDumps =
       <int, Map<int, Uint8List>>{};
+
+  /// Presets written since their raw record was received (`0xA8` / `0x83`),
+  /// so the cached record no longer matches the pedal.
+  final Set<int> _staleRecords = <int>{};
   final StreamController<({int opcode, Uint8List body})> _frameController =
       StreamController<({int opcode, Uint8List body})>.broadcast();
   Fx200GlobalSettings? _lastGlobalSettings;
+  Fx200DrumSettings? _lastDrum;
+  List<String>? _irNames;
+  Uint8List? _irNamesBody;
 
   /// `0xA0` body (order + flags) per preset: seeded from the raw dump,
   /// updated by live `0xA0` frames and by every chain write.
@@ -93,6 +103,29 @@ class Fx200HardwareSync implements Fx200DeviceLink {
   @override
   Stream<({int opcode, Uint8List body})> get frames => _frameController.stream;
 
+  /// Names of the 50 user IR slots (CAB 31-80) from the last `0x85`;
+  /// empty string = unused slot. Null until the pedal sends them.
+  List<String>? get irNames => _irNames;
+
+  /// Raw `0x85` body (50 × 15-byte names) as the pedal last sent it,
+  /// updated by IR uploads; needed to write an official `.bfl`.
+  Uint8List? get irNamesBody => _irNamesBody;
+
+  /// Records a name written by an IR upload ('' = slot cleared).
+  void rememberIrName(int slot, String name) {
+    final names = _irNames ?? List<String>.filled(Fx200Ir.slotCount, '');
+    _irNames = List<String>.of(names)..[slot] = name;
+    final body = _irNamesBody ?? Uint8List(Fx200Ir.slotCount * 15);
+    final entry = name.isEmpty ? 'EMPTY' : name;
+    body.fillRange(slot * 15, slot * 15 + 15, 0);
+    final units = entry.codeUnits.take(15).toList();
+    body.setRange(slot * 15, slot * 15 + units.length, units);
+    _irNamesBody = body;
+  }
+
+  /// Last `0xAD` drum machine state received from (or sent to) the pedal.
+  Fx200DrumSettings? get lastDrum => _lastDrum;
+
   /// Last `0xA1` global SYSTEM block received from (or sent to) the pedal.
   Fx200GlobalSettings? get lastGlobalSettings => _lastGlobalSettings;
 
@@ -159,7 +192,6 @@ class Fx200HardwareSync implements Fx200DeviceLink {
     void Function(int activePatch)? onActivePatchReceived,
     void Function(List<int> order1Based, List<bool> enabledStates)?
     onChainOrderReceived,
-    void Function(double outputLevelDb)? onOutputLevelReceived,
     void Function(double bpm)? onBpmReceived,
     void Function()? onPresetSyncComplete,
   }) async {
@@ -200,7 +232,6 @@ class Fx200HardwareSync implements Fx200DeviceLink {
             onPresetNamesReceived: onPresetNamesReceived,
             onActivePatchReceived: onActivePatchReceived,
             onChainOrderReceived: onChainOrderReceived,
-            onOutputLevelReceived: onOutputLevelReceived,
             onBpmReceived: onBpmReceived,
             onPresetDumpFrame: () {},
           );
@@ -228,7 +259,6 @@ class Fx200HardwareSync implements Fx200DeviceLink {
     void Function(int activePatch)? onActivePatchReceived,
     void Function(List<int> order1Based, List<bool> enabledStates)?
     onChainOrderReceived,
-    void Function(double outputLevelDb)? onOutputLevelReceived,
     void Function(double bpm)? onBpmReceived,
     void Function()? onPresetDumpFrame,
   }) {
@@ -236,6 +266,9 @@ class Fx200HardwareSync implements Fx200DeviceLink {
     if (chunk != null) {
       (_presetDumps[chunk.index] ??= <int, Uint8List>{})[chunk.chunk] =
           chunk.data;
+      if (chunk.chunk == Fx200Protocol.presetDumpChunkCount - 1) {
+        _staleRecords.remove(chunk.index);
+      }
       if (chunk.chunk == 4) {
         final chain = Fx200Protocol.chainBlockFromPresetDump(
           Uint8List(Fx200Protocol.presetDumpChunkBytes * 4) + chunk.data,
@@ -261,6 +294,17 @@ class Fx200HardwareSync implements Fx200DeviceLink {
 
     if (opcode == Fx200Protocol.opPresetRead && body.isNotEmpty) {
       _activePatch = body[0] & 0xff;
+    }
+
+    if (opcode == Fx200Ir.opNames) {
+      _irNames = Fx200Ir.decodeNames(body);
+      _irNamesBody = Uint8List.fromList(body);
+    }
+
+    if (opcode == Fx200Protocol.opCmdAd) {
+      final drum = Fx200DrumSettings.decode(body);
+      if (drum != null) _lastDrum = drum;
+      return;
     }
 
     final global = Fx200Protocol.decodeGlobalSettingsFrame(opcode, body);
@@ -313,12 +357,6 @@ class Fx200HardwareSync implements Fx200DeviceLink {
       return;
     }
 
-    final outDb = Fx200Protocol.decodeOutputLevelFrame(opcode, body);
-    if (outDb != null && onOutputLevelReceived != null) {
-      onOutputLevelReceived(outDb);
-      return;
-    }
-
     if (opcode == Fx200Protocol.opPresetRead &&
         body.isNotEmpty &&
         onActivePatchReceived != null) {
@@ -332,7 +370,7 @@ class Fx200HardwareSync implements Fx200DeviceLink {
   void requestPresetList() {
     if (!_connected) return;
     _beginDump();
-    _txPort?.send(
+    _tx(
       Fx200Protocol.buildHidPacket(payload: const <int>[Fx200Protocol.opCmdE0]),
     );
   }
@@ -341,7 +379,7 @@ class Fx200HardwareSync implements Fx200DeviceLink {
     if (!_connected) return;
     final clamped = patchNumber.clamp(0, Fx200Constants.presetPatchCount - 1);
     _activePatch = clamped;
-    _txPort?.send(Fx200Protocol.buildPresetReadPacket(clamped));
+    _tx(Fx200Protocol.buildPresetReadPacket(clamped));
   }
 
   void sendBlockUpdate(EffectBlock block, {bool force = false}) {
@@ -383,23 +421,40 @@ class Fx200HardwareSync implements Fx200DeviceLink {
       params: params,
     );
     _lastModules[slot] = state;
-    _txPort?.send(Fx200Protocol.encodeModuleFrame(state));
+    _tx(Fx200Protocol.encodeModuleFrame(state));
   }
 
   void sendPresetSave(int patchNumber, String name) {
     if (!_connected) return;
-    _txPort?.send(Fx200Protocol.buildPresetSavePacket(patchNumber, name));
+    _staleRecords.add(patchNumber);
+    _tx(Fx200Protocol.buildPresetSavePacket(patchNumber, name));
   }
 
-  void sendOutputLevelDb(double db) {
+  /// Writes the drum machine / metronome state (`0xAD`, global, applied
+  /// immediately).
+  void sendDrum(Fx200DrumSettings drum) {
     if (!_connected) return;
-    _txPort?.send(Fx200Protocol.buildOutputLevelPacket(db));
+    _lastDrum = drum;
+    _tx(Fx200Protocol.buildDrumPacket(drum));
+  }
+
+  /// Sends one expression-pedal assignment (`0xA3`) for the active preset.
+  /// Like the footswitch, it only persists once the preset is saved.
+  void sendExpAssignment(Fx200ExpFrame frame) {
+    if (!_connected) return;
+    _tx(Fx200Protocol.buildExpPacket(frame));
+  }
+
+  /// Sends the VOLUME-mode heel/toe range of PEDAL 1 (`0xAE`).
+  void sendVolumePedalRange(Fx200VolumePedalRange range) {
+    if (!_connected) return;
+    _tx(Fx200Protocol.buildVolumePedalRangePacket(range));
   }
 
   void sendTapTempoBpm(double bpm) {
     if (!_connected) return;
     _lastBpm = bpm.round().clamp(40, 260);
-    _txPort?.send(
+    _tx(
       Fx200Protocol.buildTapTempoPacket(
         bpm: bpm.round(),
         fsMode: _lastFsMode,
@@ -439,14 +494,14 @@ class Fx200HardwareSync implements Fx200DeviceLink {
       // packet = [len, aa, 55, lenLo, lenHi, 0xA0, ...20 body bytes, crc]
       _chainBlocks[_activePatch!] = Uint8List.fromList(packet.sublist(6, 26));
     }
-    _txPort?.send(packet);
+    _tx(packet);
   }
 
   /// Writes the whole global SYSTEM block (`0xA1`); applied immediately.
   void sendGlobalSettings(Fx200GlobalSettings settings) {
     if (!_connected) return;
     _lastGlobalSettings = settings;
-    _txPort?.send(Fx200Protocol.buildGlobalSettingsPacket(settings));
+    _tx(Fx200Protocol.buildGlobalSettingsPacket(settings));
   }
 
   /// Sends the footswitch assignment (`0xA4`) for the active preset. It is
@@ -456,7 +511,7 @@ class Fx200HardwareSync implements Fx200DeviceLink {
     _lastFsMode = config.mode;
     _lastCtrlMask = config.ctrlMask;
     _lastBpm = config.bpm;
-    _txPort?.send(Fx200Protocol.buildFootswitchPacket(config));
+    _tx(Fx200Protocol.buildFootswitchPacket(config));
   }
 
   @override
@@ -465,7 +520,13 @@ class Fx200HardwareSync implements Fx200DeviceLink {
     if (packet.length > 6 && packet[5] == Fx200Protocol.opPresetRead) {
       _activePatch = packet[6];
     }
-    _txPort?.send(packet);
+    if (packet.length > 6 && packet[5] == Fx200Protocol.opPresetSave) {
+      _staleRecords.add(packet[6]);
+    }
+    if (packet.length > 8 && packet[5] == Fx200Protocol.opCmd83) {
+      _staleRecords.add(packet[7] << 8 | packet[8]);
+    }
+    _tx(packet);
   }
 
   @override
@@ -474,6 +535,64 @@ class Fx200HardwareSync implements Fx200DeviceLink {
   @override
   void rememberChainBlock(int index, Uint8List chain) {
     _chainBlocks[index] = Uint8List.fromList(chain);
+  }
+
+  /// Up-to-date 4096-byte record of preset [index], or null if it was never
+  /// received complete or the preset was written since.
+  Uint8List? presetRecord(int index) {
+    if (_staleRecords.contains(index)) return null;
+    final chunks = _presetDumps[index];
+    if (chunks == null || chunks.length < Fx200Protocol.presetDumpChunkCount) {
+      return null;
+    }
+    final record = BytesBuilder(copy: false);
+    for (var c = 0; c < Fx200Protocol.presetDumpChunkCount; c++) {
+      final data = chunks[c];
+      if (data == null) return null;
+      record.add(data);
+    }
+    return record.toBytes();
+  }
+
+  /// Presets whose record is missing or stale.
+  List<int> get incompletePresets => <int>[
+    for (var i = 0; i < Fx200Constants.presetPatchCount; i++)
+      if (presetRecord(i) == null) i,
+  ];
+
+  /// Human-readable list of the missing dump chunks (for error messages).
+  String describeMissingRecords({int max = 6}) {
+    final parts = <String>[];
+    for (final i in incompletePresets.take(max)) {
+      final have = _presetDumps[i]?.keys.toSet() ?? <int>{};
+      final missing = <int>[
+        for (var c = 0; c < Fx200Protocol.presetDumpChunkCount; c++)
+          if (!have.contains(c)) c,
+      ];
+      parts.add(
+        '${i.toString().padLeft(3, '0')}'
+        '${_staleRecords.contains(i) ? ' (modified)' : ''}'
+        ' chunks ${missing.join(',')}',
+      );
+    }
+    final more = incompletePresets.length - parts.length;
+    return parts.join('; ') + (more > 0 ? ' (+$more)' : '');
+  }
+
+  /// Re-reads the preset dump until every record is complete (up to
+  /// [attempts] times), merging what each dump delivered.
+  Future<void> ensureCompleteRecords({int attempts = 3}) async {
+    for (var k = 0; k < attempts && incompletePresets.isNotEmpty; k++) {
+      await readFullDump();
+    }
+    if (incompletePresets.isNotEmpty) {
+      throw StateError(
+        tr(
+          'Some presets arrived incomplete from the FX200 after {0} reads (USB packets lost): {1}.',
+          [attempts, describeMissingRecords()],
+        ),
+      );
+    }
   }
 
   /// Complete 4096-byte records captured so far (index → bytes).
@@ -500,7 +619,12 @@ class Fx200HardwareSync implements Fx200DeviceLink {
     }
     await waitUntilReady();
     final requestedAt = DateTime.now();
-    _presetDumps.clear();
+    // Keep chunks already received intact (each one is simply replaced when
+    // it arrives again), so repeated dumps fill the gaps of lost USB
+    // packets. Only presets written since are discarded.
+    for (final i in _staleRecords) {
+      _presetDumps.remove(i);
+    }
     _lastDumpChunkAt = null;
     requestPresetList();
 
@@ -522,10 +646,19 @@ class Fx200HardwareSync implements Fx200DeviceLink {
     );
   }
 
+  /// Every packet to the pedal goes through here: [fx200CheckSendable]
+  /// refuses commands that are undocumented, unknown or forbidden.
+  void _tx(Uint8List packet) {
+    if (packet.length > 5) fx200CheckSendable(packet[5]);
+    _txPort?.send(packet);
+  }
+
+  void _txPortClose() => _txPort?.send(null);
+
   void disconnect() {
     _connected = false;
     _finishDump();
-    _txPort?.send(null);
+    _txPortClose();
     _txPort = null;
     _rxPort?.close();
     _rxPort = null;
@@ -634,4 +767,3 @@ Future<void> _usbWorkerEntry(SendPort mainPort) async {
   cmdPort.close();
   session.close();
 }
-

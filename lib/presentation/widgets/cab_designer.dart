@@ -9,6 +9,7 @@ import '../../domain/entities/preset.dart';
 import 'biquad_response.dart';
 import 'model_art_view.dart';
 import 'rotary_knob.dart';
+import '../../core/l10n/l10n.dart';
 
 typedef CabParamChanged = void Function(
   String parameterId,
@@ -67,7 +68,7 @@ class CabDesigner extends StatelessWidget {
           runSpacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Text('TUBE', style: text.labelSmall),
+            Text(tr('TUBE'), style: text.labelSmall),
             SegmentedButton<int>(
               showSelectedIcon: false,
               style: const ButtonStyle(visualDensity: VisualDensity.compact),
@@ -90,8 +91,8 @@ class CabDesigner extends StatelessWidget {
           crossAxisAlignment: WrapCrossAlignment.end,
           children: [
             _Labeled(
-              label: 'SPACE ${space.value.round()}',
-              hint: 'Drag up/down · double-click resets',
+              label: tr('SPACE {0}', [space.value.round()]),
+              hint: tr('Drag up/down · double-click resets'),
               child: _RoomView(
                 block: block,
                 space: space,
@@ -100,10 +101,11 @@ class CabDesigner extends StatelessWidget {
               ),
             ),
             _Labeled(
-              label:
-                  'LOW CUT ${_hzLabel(lowCut.value)} · '
-                  'HI CUT ${_hzLabel(hiCut.value)}',
-              hint: 'Drag LC / HC · past the edge = OFF',
+              label: tr('LOW CUT {0} · HI CUT {1}', [
+                _hzLabel(lowCut.value),
+                _hzLabel(hiCut.value),
+              ]),
+              hint: tr('Drag LC / HC · past the edge = OFF'),
               child: _ResponseView(
                 lowCut: lowCut,
                 hiCut: hiCut,
@@ -128,8 +130,9 @@ class CabDesigner extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          'The FX200 has no microphone placement: SPACE adds room ambience, '
-          'LOW / HI CUT shape the cabinet response.',
+          tr(
+            'The FX200 has no microphone placement: SPACE adds room ambience, LOW / HI CUT shape the cabinet response.',
+          ),
           style: text.bodySmall?.copyWith(color: ext.textMuted),
         ),
       ],
@@ -253,7 +256,7 @@ class _RoomViewState extends State<_RoomView> {
           }
         },
         child: Container(
-          key: const ValueKey<String>('cab_room'),
+          key: ValueKey<String>('cab_room'),
           width: _w,
           height: _h,
           decoration: BoxDecoration(
@@ -480,7 +483,7 @@ class _ResponseViewState extends State<_ResponseView> {
           setState(() => _dragging = null);
         },
         child: Container(
-          key: const ValueKey<String>('cab_response'),
+          key: ValueKey<String>('cab_response'),
           width: _w,
           height: _h,
           decoration: BoxDecoration(

@@ -18,6 +18,7 @@ import 'dart:typed_data';
 /// | 6, 7 | GLOBAL CAB left / right (0/1)                     |
 /// | 8    | CAB SYNC (0/1)                                    |
 /// | 11   | FS MODE (0 NORMAL, 1 FAVORITE, 2 DUAL)            |
+/// | 16   | INPUT LEVEL, stored dB + 1 (official editor: 0..20 dB) |
 /// | 18   | BRIGHTNESS (0..100)                               |
 /// | 21   | LOOPER POSITION (0 PRE, 1 POST)                   |
 /// | 22   | DLY/REV SPILL-OVER (0/1)                          |
@@ -79,6 +80,11 @@ class Fx200GlobalSettings {
   bool get cabSync => _raw[8] != 0;
   int get fsMode => _raw[11];
   int get brightness => _raw[18];
+
+  /// INPUT LEVEL in dB as the official editor shows it (slider 0..20 dB,
+  /// stored as dB + 1: `0x44bdfc` reads `value - 1`, `0x447a7d` writes
+  /// `slider + 1`; `captura-input-level.pcapng` changes only this byte).
+  int get inputLevelDb => (_raw[16] - 1).clamp(0, 20);
   bool get looperPost => _raw[21] != 0;
   bool get spillOver => _raw[22] != 0;
   bool get midiOut => _raw[23] != 0;
@@ -109,6 +115,8 @@ class Fx200GlobalSettings {
   Fx200GlobalSettings withFsMode(int v) =>
       _with({11: v.clamp(fsModeNormal, fsModeDual)});
   Fx200GlobalSettings withBrightness(int v) => _with({18: v.clamp(0, 100)});
+  Fx200GlobalSettings withInputLevelDb(int db) =>
+      _with({16: db.clamp(0, 20) + 1});
   Fx200GlobalSettings withLooperPost(bool v) => _with({21: v ? 1 : 0});
   Fx200GlobalSettings withSpillOver(bool v) => _with({22: v ? 1 : 0});
 
@@ -209,4 +217,212 @@ class Fx200FootswitchConfig {
 
   @override
   int get hashCode => Object.hash(mode, ctrlMask, bpm);
+}
+
+/// One expression-pedal assignment carried by `0xA3` (10-byte body):
+///
+/// | body | field                                                         |
+/// |------|---------------------------------------------------------------|
+/// | 0    | pedal: 0 = PEDAL 1 (internal), 1 = PEDAL 2 (external jack)    |
+/// | 1    | mode of that pedal: 0 = EXPRESSION, 1 = VOLUME (PEDAL 1 only) |
+/// | 2    | module slot + 1 (FX, DS/OD, AMP, CAB, FX LOOP, NS, EQ, ...)   |
+/// | 3    | parameter index inside the module (`0x91..0x9A` order)        |
+/// | 4, 5 | value at toe down (maximum), u16 big-endian, raw units        |
+/// | 6, 7 | value at heel down (minimum), u16 big-endian                  |
+/// | 8, 9 | assigned flag, u16 big-endian (1 while min or max is non-zero) |
+///
+/// From `FX200.exe`: the sender is `0x411d50`, the receiver `0x42c290`; the
+/// PEDALDLG slots `slot_minExpValueChanged` (`0x43c200`) and
+/// `slot_maxExpValueChanged` (`0x43c770`) fill the min and max tables, and the
+/// flag drops to 0 when both are 0 (which is how an assignment is deleted).
+/// One frame carries one module parameter; a preset may hold several.
+class Fx200ExpFrame {
+  const Fx200ExpFrame({
+    required this.pedal,
+    required this.mode,
+    required this.moduleSlot,
+    required this.paramIndex,
+    required this.min,
+    required this.max,
+    required this.assigned,
+  });
+
+  static const int pedalInternal = 0;
+  static const int pedalExternal = 1;
+  static const int modeExpression = 0;
+  static const int modeVolume = 1;
+
+  final int pedal;
+  final int mode;
+  final int moduleSlot;
+  final int paramIndex;
+  final int min;
+  final int max;
+  final bool assigned;
+
+  static Fx200ExpFrame? decode(List<int> body) {
+    if (body.length < 10) return null;
+    final module = body[2] & 0xff;
+    return Fx200ExpFrame(
+      pedal: body[0] & 0xff,
+      mode: body[1] & 0xff,
+      // The pedal (like FX200.exe at 0x42d6a4) treats 0 as the first module.
+      moduleSlot: module == 0 ? 0 : module - 1,
+      paramIndex: body[3] & 0xff,
+      max: (body[4] & 0xff) << 8 | (body[5] & 0xff),
+      min: (body[6] & 0xff) << 8 | (body[7] & 0xff),
+      assigned: ((body[8] & 0xff) << 8 | (body[9] & 0xff)) != 0,
+    );
+  }
+
+  List<int> encode() {
+    final lo = min.clamp(0, 0xffff);
+    final hi = max.clamp(0, 0xffff);
+    final flag = assigned && (lo != 0 || hi != 0) ? 1 : 0;
+    return <int>[
+      pedal & 0xff,
+      mode & 0xff,
+      (moduleSlot + 1) & 0xff,
+      paramIndex & 0xff,
+      hi >> 8,
+      hi & 0xff,
+      lo >> 8,
+      lo & 0xff,
+      0,
+      flag,
+    ];
+  }
+}
+
+/// Range of PEDAL 1 in VOLUME mode, carried by `0xAE`
+/// (`[0, max, 0, min]`, 0..100 %). `FX200.exe` builds it at `0x411eb0` from
+/// the PEDALDLG volume slots (`0x43aba0`..`0x43aec3`); the pedal reports
+/// `00 64 00 00` (heel 0 %, toe 100 %) by default.
+class Fx200VolumePedalRange {
+  const Fx200VolumePedalRange({required this.min, required this.max});
+
+  static const Fx200VolumePedalRange standard = Fx200VolumePedalRange(
+    min: 0,
+    max: 100,
+  );
+
+  final int min;
+  final int max;
+
+  static Fx200VolumePedalRange? decode(List<int> body) {
+    if (body.length < 4) return null;
+    return Fx200VolumePedalRange(
+      min: (body[3] & 0xff).clamp(0, 100),
+      max: (body[1] & 0xff).clamp(0, 100),
+    );
+  }
+
+  List<int> encode() => <int>[0, max.clamp(0, 100), 0, min.clamp(0, 100)];
+
+  Fx200VolumePedalRange copyWith({int? min, int? max}) =>
+      Fx200VolumePedalRange(min: min ?? this.min, max: max ?? this.max);
+
+  @override
+  bool operator ==(Object other) =>
+      other is Fx200VolumePedalRange && other.min == min && other.max == max;
+
+  @override
+  int get hashCode => Object.hash(min, max);
+}
+
+/// Drum machine / metronome state carried by `0xAD` (10-byte body, global):
+///
+/// | body | field                                                        |
+/// |------|--------------------------------------------------------------|
+/// | 1    | on/off (0/1)                                                 |
+/// | 3    | style: 1..8 = RHYTHM styles, 9 = METRONOME                   |
+/// | 5    | rhythm type inside the style ("TEMPO" in the manual), 1..10  |
+/// | 6, 7 | BPM, u16 big-endian (40..260)                                |
+/// | 9    | volume (0..100)                                              |
+///
+/// From `FX200.exe`: sender `0x411cc0`, receiver `0x42c250`; DRUMDLG switches
+/// to METRONOME by writing style 9 / type 1 (`0x447411`) and back to RHYTHM
+/// with style 1 / type 1 (`0x4472ca`). Bytes 0, 2, 4 and 8 are always 0.
+class Fx200DrumSettings {
+  const Fx200DrumSettings({
+    required this.on,
+    required this.style,
+    required this.groove,
+    required this.bpm,
+    required this.volume,
+  });
+
+  static const int rhythmStyleCount = 8;
+  static const int metronomeStyle = 9;
+  static const int grooveCount = 10;
+  static const int minBpm = 40;
+  static const int maxBpm = 260;
+
+  final bool on;
+  final int style;
+  final int groove;
+  final int bpm;
+  final int volume;
+
+  bool get isMetronome => style == metronomeStyle;
+
+  static Fx200DrumSettings? decode(List<int> body) {
+    if (body.length < 10) return null;
+    return Fx200DrumSettings(
+      on: (body[1] & 0xff) != 0,
+      style: (body[3] & 0xff).clamp(1, metronomeStyle),
+      groove: (body[5] & 0xff).clamp(1, grooveCount),
+      bpm: ((body[6] & 0xff) << 8 | (body[7] & 0xff)).clamp(minBpm, maxBpm),
+      volume: (body[9] & 0xff).clamp(0, 100),
+    );
+  }
+
+  List<int> encode() {
+    final b = bpm.clamp(minBpm, maxBpm);
+    return <int>[
+      0,
+      on ? 1 : 0,
+      0,
+      style.clamp(1, metronomeStyle),
+      0,
+      groove.clamp(1, grooveCount),
+      b >> 8,
+      b & 0xff,
+      0,
+      volume.clamp(0, 100),
+    ];
+  }
+
+  /// Switches between RHYTHM (style 1) and METRONOME (style 9) like the
+  /// official editor, which also resets the rhythm type to 1.
+  Fx200DrumSettings withMetronome(bool metronome) =>
+      copyWith(style: metronome ? metronomeStyle : 1, groove: 1);
+
+  Fx200DrumSettings copyWith({
+    bool? on,
+    int? style,
+    int? groove,
+    int? bpm,
+    int? volume,
+  }) {
+    return Fx200DrumSettings(
+      on: on ?? this.on,
+      style: style ?? this.style,
+      groove: groove ?? this.groove,
+      bpm: bpm ?? this.bpm,
+      volume: volume ?? this.volume,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is Fx200DrumSettings &&
+      other.on == on &&
+      other.style == style &&
+      other.groove == groove &&
+      other.bpm == bpm &&
+      other.volume == volume;
+
+  @override
+  int get hashCode => Object.hash(on, style, groove, bpm, volume);
 }

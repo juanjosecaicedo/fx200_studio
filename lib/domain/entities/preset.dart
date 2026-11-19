@@ -1,3 +1,7 @@
+import 'preset_controls.dart';
+
+export 'preset_controls.dart';
+
 /// Effect block categories styled with dedicated hardware accents.
 enum EffectCategory {
   gate,
@@ -84,6 +88,32 @@ class BlockParameter {
 
   String get displayText => textOf(value);
 
+  /// Raw value for text typed by the user, the inverse of [textOf]: accepts
+  /// an option name or index, `C` / `L20` / `R5` for PAN, and plain display
+  /// numbers with or without the unit ("500", "500 ms"). Null if unparsable.
+  double? rawFromText(String text) {
+    final t = text.trim();
+    if (t.isEmpty) return null;
+    if (options.isNotEmpty) {
+      final i = options.indexWhere((o) => o.toLowerCase() == t.toLowerCase());
+      if (i >= 0) return i.toDouble().clamp(min, max);
+      final n = int.tryParse(t);
+      return n?.toDouble().clamp(min, max);
+    }
+    if (label.startsWith('PAN')) {
+      final u = t.toUpperCase();
+      if (u == 'C') return rawFor(0);
+      final m = RegExp(r'^([LR])\s*(\d+(?:[.,]\d+)?)$').firstMatch(u);
+      if (m != null) {
+        final n = double.parse(m.group(2)!.replaceAll(',', '.'));
+        return rawFor(m.group(1) == 'L' ? -n : n);
+      }
+    }
+    final m = RegExp(r'-?\d+(?:[.,]\d+)?').firstMatch(t);
+    if (m == null) return null;
+    return rawFor(double.parse(m.group(0)!.replaceAll(',', '.')));
+  }
+
   BlockParameter copyWith({double? value}) {
     return BlockParameter(
       id: id,
@@ -137,7 +167,7 @@ class EffectBlock {
   final String modelName;
   final List<String> availableModels;
   final bool enabled;
-  final int laneIndex; // 0 = Main Lane A, 1 = Parallel Lane B
+  final int laneIndex; // always 0: the FX200 chain is a single serial lane
   final int slotIndex;
   final List<BlockParameter> parameters;
   final String mode;
@@ -181,7 +211,11 @@ class CatalogModel {
   final List<BlockParameter> defaultParameters;
 }
 
-/// Immutable preset entity containing blocks, scenes (A-H), and global settings.
+/// Scene names of the planned scene mode (needs custom firmware).
+const List<String> kSceneNames = <String>['A', 'B', 'C', 'D'];
+
+/// Immutable preset entity containing blocks, the active scene (A-D), and
+/// global settings.
 class Preset {
   const Preset({
     required this.id,
@@ -190,18 +224,20 @@ class Preset {
     required this.activeScene,
     required this.bpm,
     required this.outputLevelDb,
-    required this.parallelSplitEnabled,
     required this.blocks,
+    this.controls = const PresetControls(),
   });
 
   final String id;
   final int patchNumber;
   final String name;
-  final String activeScene; // 'A'..'H'
+  final String activeScene; // one of [kSceneNames]
   final double bpm;
   final double outputLevelDb;
-  final bool parallelSplitEnabled;
   final List<EffectBlock> blocks;
+
+  /// Footswitch, expression pedal and VOLUME range of this preset.
+  final PresetControls controls;
 
   Preset copyWith({
     int? patchNumber,
@@ -209,8 +245,8 @@ class Preset {
     String? activeScene,
     double? bpm,
     double? outputLevelDb,
-    bool? parallelSplitEnabled,
     List<EffectBlock>? blocks,
+    PresetControls? controls,
   }) {
     return Preset(
       id: id,
@@ -219,8 +255,8 @@ class Preset {
       activeScene: activeScene ?? this.activeScene,
       bpm: bpm ?? this.bpm,
       outputLevelDb: outputLevelDb ?? this.outputLevelDb,
-      parallelSplitEnabled: parallelSplitEnabled ?? this.parallelSplitEnabled,
       blocks: blocks ?? this.blocks,
+      controls: controls ?? this.controls,
     );
   }
 }

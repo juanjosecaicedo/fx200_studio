@@ -9,6 +9,7 @@ import 'compressor_designer.dart';
 import 'model_art_view.dart';
 import 'parametric_eq_graph.dart';
 import 'rotary_knob.dart';
+import '../../core/l10n/l10n.dart';
 
 /// Adaptive parameter editor panel for the currently selected [EffectBlock].
 class ParameterPanel extends StatelessWidget {
@@ -19,6 +20,7 @@ class ParameterPanel extends StatelessWidget {
     required this.onToggleBypass,
     required this.onModelChanged,
     required this.onModeChanged,
+    this.modelLabel,
   });
 
   final EffectBlock? block;
@@ -27,6 +29,9 @@ class ParameterPanel extends StatelessWidget {
   final VoidCallback onToggleBypass;
   final ValueChanged<String> onModelChanged;
   final ValueChanged<String> onModeChanged;
+
+  /// Display text of a model name (e.g. user IR slots with their IR name).
+  final String Function(String modelName)? modelLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -43,7 +48,7 @@ class ParameterPanel extends StatelessWidget {
         ),
         child: Center(
           child: Text(
-            'SELECT A BLOCK IN THE SIGNAL CHAIN TO EDIT PARAMETERS',
+            tr('SELECT A BLOCK IN THE SIGNAL CHAIN TO EDIT PARAMETERS'),
             style: Theme.of(context).textTheme.labelSmall,
           ),
         ),
@@ -122,13 +127,14 @@ class ParameterPanel extends StatelessWidget {
                 ],
               ),
               _CompactDropdown(
-                label: 'MODEL',
+                label: tr('MODEL'),
                 value: current.modelName,
                 items: current.availableModels.contains(current.modelName)
                     ? current.availableModels
                     : <String>[current.modelName, ...current.availableModels],
                 ext: ext,
                 onChanged: onModelChanged,
+                itemLabel: modelLabel,
                 itemLeading: (name) => ModelArtView(
                   category: current.category,
                   modelName: name,
@@ -137,7 +143,7 @@ class ParameterPanel extends StatelessWidget {
                 ),
               ),
               _CompactDropdown(
-                label: 'MODE',
+                label: tr('MODE'),
                 value: current.mode,
                 items: modes,
                 ext: ext,
@@ -199,6 +205,7 @@ class ParameterPanel extends StatelessWidget {
                     max: param.max,
                     unit: param.unit,
                     formatter: param.textOf,
+                    parser: param.rawFromText,
                     accentColor: accent,
                     onChanged: (v) =>
                         onParameterChanged(param.id, v, recordHistory: false),
@@ -297,6 +304,7 @@ class _CompactDropdown extends StatelessWidget {
     required this.ext,
     required this.onChanged,
     this.itemLeading,
+    this.itemLabel,
     this.showLabel = false,
   });
 
@@ -311,6 +319,7 @@ class _CompactDropdown extends StatelessWidget {
 
   /// Optional widget shown before each item (e.g. the model illustration).
   final Widget Function(String item)? itemLeading;
+  final String Function(String item)? itemLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -351,13 +360,13 @@ class _CompactDropdown extends StatelessWidget {
               (item) => DropdownMenuItem<String>(
                 value: item,
                 child: itemLeading == null
-                    ? Text(item)
+                    ? Text(itemLabel?.call(item) ?? item)
                     : Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           itemLeading!(item),
                           const SizedBox(width: 8),
-                          Text(item),
+                          Text(itemLabel?.call(item) ?? item),
                         ],
                       ),
               ),

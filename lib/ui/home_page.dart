@@ -41,6 +41,7 @@ class _Fx200HomePageState extends State<Fx200HomePage> {
     _namJsonController.text = content;
     _parseNamJson();
   }
+
   String? _namParseError;
   double _slimRatio = 1.0;
   String? _exportMessage;
@@ -89,6 +90,7 @@ class _Fx200HomePageState extends State<Fx200HomePage> {
       _exportMessage = 'Exported IR (${bytes.length}B) -> ${location.path}';
     });
   }
+
   int _selectedPresetIndex = 0x8b; // Preset 139
 
   Future<void> _exportNam7() async {
@@ -209,8 +211,10 @@ class _Fx200HomePageState extends State<Fx200HomePage> {
         final frames = _assembler.feedPacket(polled.data!);
         for (final frame in frames) {
           final mod = Fx200Protocol.decodeModuleFrame(frame.opcode, frame.body);
-          final presetDump =
-              Fx200Protocol.decodePresetDumpFrame(frame.opcode, frame.body);
+          final presetDump = Fx200Protocol.decodePresetDumpFrame(
+            frame.opcode,
+            frame.body,
+          );
           setState(() {
             if (mod != null) {
               _moduleStates[mod.slotIndex] = mod;
@@ -514,9 +518,8 @@ class _Fx200HomePageState extends State<Fx200HomePage> {
                   Expanded(
                     child: Text(
                       '${activeModule.name} · Model ${activeModule.modelId}',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: colorScheme.primary,
-                      ),
+                      style: Theme.of(context).textTheme.labelSmall
+                          ?.copyWith(color: colorScheme.primary),
                     ),
                   ),
                   Switch(
@@ -550,14 +553,17 @@ class _Fx200HomePageState extends State<Fx200HomePage> {
                           overlayShape: SliderComponentShape.noOverlay,
                         ),
                         child: Slider(
-                          value: activeModule.params[i]
-                              .toDouble()
-                              .clamp(0, activeModule.params[i] > 100 ? 500 : 100),
+                          value: activeModule.params[i].toDouble().clamp(
+                            0,
+                            activeModule.params[i] > 100 ? 500 : 100,
+                          ),
                           min: 0,
                           max: activeModule.params[i] > 100 ? 500 : 100,
                           onChanged: connected
                               ? (val) {
-                                  final next = List<int>.from(activeModule.params);
+                                  final next = List<int>.from(
+                                    activeModule.params,
+                                  );
                                   next[i] = val.round();
                                   _updateModuleState(
                                     activeModule.copyWith(params: next),
@@ -577,12 +583,12 @@ class _Fx200HomePageState extends State<Fx200HomePage> {
                       _irError != null
                           ? 'IR Error: $_irError'
                           : _loadedIr != null
-                              ? 'IR $_loadedIrName: ${_loadedIr!.sampleRate} Hz · '
-                                  '${_loadedIr!.bitsPerSample}-bit · ${_loadedIr!.sampleCount} pts'
-                                  '${_loadedIr!.needsConversion ? ' (needs 44.1k/24b/1024)' : ' (FX200 OK)'}'
-                              : 'IR Spec: ${Fx200Constants.irSampleRateHz} Hz · '
-                                  '${Fx200Constants.irBitDepth}-bit · '
-                                  '${Fx200Constants.irSamplePoints} pts',
+                          ? 'IR $_loadedIrName: ${_loadedIr!.sampleRate} Hz · '
+                                '${_loadedIr!.bitsPerSample}-bit · ${_loadedIr!.sampleCount} pts'
+                                '${_loadedIr!.needsConversion ? ' (needs 44.1k/24b/1024)' : ' (FX200 OK)'}'
+                          : 'IR Spec: ${Fx200Constants.irSampleRateHz} Hz · '
+                                '${Fx200Constants.irBitDepth}-bit · '
+                                '${Fx200Constants.irSamplePoints} pts',
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
                         color: _irError != null ? colorScheme.error : null,
                       ),
@@ -719,9 +725,8 @@ class _Fx200HomePageState extends State<Fx200HomePage> {
                 const SizedBox(height: 4),
                 Text(
                   _exportMessage!,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: colorScheme.primary,
-                  ),
+                  style: Theme.of(context).textTheme.labelSmall
+                      ?.copyWith(color: colorScheme.primary),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),

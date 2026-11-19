@@ -124,8 +124,11 @@ class FxEditorThemeExtension extends ThemeExtension<FxEditorThemeExtension> {
   ) {
     if (other is! FxEditorThemeExtension) return this;
     return FxEditorThemeExtension(
-      chassisBackground:
-          Color.lerp(chassisBackground, other.chassisBackground, t)!,
+      chassisBackground: Color.lerp(
+        chassisBackground,
+        other.chassisBackground,
+        t,
+      )!,
       panelSurface: Color.lerp(panelSurface, other.panelSurface, t)!,
       blockSurface: Color.lerp(blockSurface, other.blockSurface, t)!,
       elevatedSurface: Color.lerp(elevatedSurface, other.elevatedSurface, t)!,

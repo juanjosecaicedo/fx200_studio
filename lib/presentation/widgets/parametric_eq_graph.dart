@@ -8,6 +8,7 @@ import '../../core/theme/editor_theme.dart';
 import '../../domain/entities/preset.dart';
 import 'biquad_response.dart';
 import 'rotary_knob.dart';
+import '../../core/l10n/l10n.dart';
 
 /// One EQ band: a gain parameter plus either a fixed centre frequency
 /// (6-band models) or a frequency parameter (4 BAND CUSTOM).
@@ -366,7 +367,12 @@ class _BandReadoutChip extends StatelessWidget {
         border: Border.all(color: isActive ? nodeColor : ext.subtleBorder),
       ),
       child: Text(
-        '$roman $freqLabel: $sign${db.toStringAsFixed(1)} dB',
+        tr('{0} {1}: {2}{3} dB', [
+          roman,
+          freqLabel,
+          sign,
+          db.toStringAsFixed(1),
+        ]),
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
           color: isActive ? ext.textPrimary : ext.textMuted,
           fontSize: 10,

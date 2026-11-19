@@ -38,7 +38,6 @@ class PresetRemoteDataSource {
       activeScene: 'A',
       bpm: 120.0,
       outputLevelDb: 0.0,
-      parallelSplitEnabled: false,
       blocks: Fx200Models.buildDefaultBlocks(),
     );
     return PresetModel.fromEntity(entity);

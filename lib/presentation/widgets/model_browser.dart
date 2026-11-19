@@ -4,6 +4,7 @@ import '../../core/theme/editor_theme.dart';
 import '../../domain/entities/preset.dart';
 import 'block_tile.dart';
 import 'model_art_view.dart';
+import '../../core/l10n/l10n.dart';
 
 /// Collapsible side browser listing available DSP models by category
 /// with live search and drag-to-chain support.
@@ -54,21 +55,22 @@ class ModelBrowser extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'MODEL BROWSER',
+                  tr('MODEL BROWSER'),
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
                 const SizedBox(height: 8),
                 TextField(
                   onChanged: onSearchChanged,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: ext.textPrimary,
-                  ),
+                  style: Theme.of(context).textTheme.bodySmall
+                      ?.copyWith(color: ext.textPrimary),
                   decoration: InputDecoration(
-                    hintText: 'Search models...',
+                    hintText: tr('Search models...'),
                     prefixIcon: const Icon(Icons.search, size: 16),
                     isDense: true,
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
                     filled: true,
                     fillColor: ext.blockSurface,
                     border: OutlineInputBorder(
@@ -87,7 +89,7 @@ class ModelBrowser extends StatelessWidget {
                   child: Row(
                     children: [
                       _FilterChip(
-                        label: 'ALL',
+                        label: tr('ALL'),
                         selected: categoryFilter == null,
                         accent: ext.textPrimary,
                         ext: ext,
@@ -168,15 +170,12 @@ class _FilterChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected ? accent.withValues(alpha: 0.2) : ext.blockSurface,
           borderRadius: BorderRadius.circular(6),
-          border: Border.all(
-            color: selected ? accent : ext.subtleBorder,
-          ),
+          border: Border.all(color: selected ? accent : ext.subtleBorder),
         ),
         child: Text(
           label,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: selected ? accent : ext.textMuted,
-          ),
+          style: Theme.of(context).textTheme.labelSmall
+              ?.copyWith(color: selected ? accent : ext.textMuted),
         ),
       ),
     );
@@ -240,7 +239,7 @@ class _CatalogItemCard extends StatelessWidget {
             ),
           ),
           IconButton(
-            tooltip: 'Add to signal chain',
+            tooltip: tr('Add to signal chain'),
             icon: Icon(Icons.add_circle_outline, size: 18, color: accent),
             visualDensity: VisualDensity.compact,
             padding: EdgeInsets.zero,

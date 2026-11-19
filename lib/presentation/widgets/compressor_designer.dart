@@ -6,6 +6,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../core/theme/editor_theme.dart';
 import '../../domain/entities/preset.dart';
 import 'rotary_knob.dart';
+import '../../core/l10n/l10n.dart';
 
 typedef CompParamChanged = void Function(
   String parameterId,
@@ -66,6 +67,7 @@ class CompressorDesigner extends StatelessWidget {
       max: p.max,
       unit: p.unit,
       formatter: p.textOf,
+      parser: p.rawFromText,
       accentColor: accent,
       onChanged: (v) => set(p, v, commit: false),
       onChangeEnd: (v) => set(p, v),
@@ -83,12 +85,14 @@ class CompressorDesigner extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'THRESHOLD ${threshold.displayText} · '
-                'RATIO ${ratio.displayText}',
+                tr('THRESHOLD {0} · RATIO {1}', [
+                  threshold.displayText,
+                  ratio.displayText,
+                ]),
                 style: text.labelSmall,
               ),
               Text(
-                'Drag T (threshold) and R (ratio) · double-click resets',
+                tr('Drag T (threshold) and R (ratio) · double-click resets'),
                 style: text.bodySmall?.copyWith(
                   color: ext.textMuted,
                   fontSize: 10,
@@ -104,8 +108,9 @@ class CompressorDesigner extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                'Max gain reduction (0 dB in): '
-                '${reductionAt0.toStringAsFixed(1)} dB',
+                tr('Max gain reduction (0 dB in): {0} dB', [
+                  reductionAt0.toStringAsFixed(1),
+                ]),
                 style: text.bodySmall?.copyWith(color: ext.textMuted),
               ),
             ],
@@ -127,9 +132,12 @@ class CompressorDesigner extends StatelessWidget {
               children: [knob(attack), knob(level)],
             ),
             const SizedBox(height: 12),
-            Text('ATTACK ${attack.displayText}', style: text.labelSmall),
             Text(
-              'Gain-reduction onset (relative shape)',
+              tr('ATTACK {0}', [attack.displayText]),
+              style: text.labelSmall,
+            ),
+            Text(
+              tr('Gain-reduction onset (relative shape)'),
               style: text.bodySmall?.copyWith(
                 color: ext.textMuted,
                 fontSize: 10,
@@ -137,7 +145,7 @@ class CompressorDesigner extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             SizedBox(
-              key: const ValueKey<String>('comp_attack'),
+              key: ValueKey<String>('comp_attack'),
               width: 200,
               height: 70,
               child: CustomPaint(
@@ -271,7 +279,7 @@ class _TransferCurveState extends State<_TransferCurve> {
   Widget build(BuildContext context) {
     final ext = Theme.of(context).extension<FxEditorThemeExtension>()!;
     return Listener(
-      key: const ValueKey<String>('comp_curve'),
+      key: ValueKey<String>('comp_curve'),
       behavior: HitTestBehavior.opaque,
       onPointerDown: _down,
       onPointerMove: _move,
@@ -493,7 +501,7 @@ class _AttackPainter extends CustomPainter {
     );
     final tp = TextPainter(
       text: TextSpan(
-        text: 'GR',
+        text: tr('GR'),
         style: TextStyle(color: label, fontSize: 9),
       ),
       textDirection: TextDirection.ltr,

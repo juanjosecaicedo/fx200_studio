@@ -4,6 +4,7 @@ import '../../core/fx200_constants.dart';
 import '../../core/fx200_models.dart';
 import '../../core/theme/editor_theme.dart';
 import '../../domain/entities/preset.dart';
+import '../../core/l10n/l10n.dart';
 
 /// Left sidebar listing all 200 FX200 presets with real hardware names,
 /// live search filtering, one-click loading, copy / paste (buttons or
@@ -21,6 +22,8 @@ class PresetSidebar extends StatefulWidget {
     this.onPastePreset,
     this.onClearPreset,
     this.onMovePreset,
+    this.onExportPresets,
+    this.onImportPresets,
     this.opsBusy = false,
     this.opsProgress = 0,
     this.opsMessage,
@@ -42,6 +45,13 @@ class PresetSidebar extends StatefulWidget {
   final ValueChanged<int>? onPastePreset;
   final ValueChanged<int>? onClearPreset;
   final void Function(int from, int to)? onMovePreset;
+
+  /// Exports the given presets as `.pfl` files (the caller picks a folder).
+  final ValueChanged<List<int>>? onExportPresets;
+
+  /// Imports `.pfl` files into consecutive slots starting at the given one
+  /// (the caller picks the files and confirms).
+  final ValueChanged<int>? onImportPresets;
   final bool opsBusy;
   final double opsProgress;
   final String? opsMessage;
@@ -76,7 +86,7 @@ class _PresetSidebarState extends State<PresetSidebar> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('CANCEL'),
+            child: Text(tr('CANCEL')),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
@@ -91,9 +101,12 @@ class _PresetSidebarState extends State<PresetSidebar> {
   Future<void> _paste(int target) async {
     if (!_canPaste) return;
     final ok = await _confirm(
-      'Paste preset',
-      'Overwrite ${_pad(target)} "${_nameOf(target)}" on the pedal with '
-          '${widget.clipboardLabel}?',
+      tr('Paste preset'),
+      tr('Overwrite {0} "{1}" on the pedal with {2}?', [
+        _pad(target),
+        _nameOf(target),
+        widget.clipboardLabel,
+      ]),
       'OVERWRITE',
     );
     if (ok) widget.onPastePreset!(target);
@@ -104,11 +117,11 @@ class _PresetSidebarState extends State<PresetSidebar> {
   Future<void> _clear(int index) async {
     if (!_canClear) return;
     final ok = await _confirm(
-      'Clear preset',
-      'Clear ${_pad(index)} "${_nameOf(index)}" on the pedal?\n\n'
-          'All modules are switched off, the chain order and footswitch are '
-          'reset, the EXP assignment is removed and it is renamed "Empty". '
-          'Copy it first if you may want it back.',
+      tr('Clear preset'),
+      tr(
+        'Clear {0} "{1}" on the pedal?\n\nAll modules are switched off, the chain order and footswitch are reset, the EXP assignment is removed and it is renamed "Empty". Copy it first if you may want it back.',
+        [_pad(index), _nameOf(index)],
+      ),
       'CLEAR',
     );
     if (ok) widget.onClearPreset!(index);
@@ -119,16 +132,94 @@ class _PresetSidebarState extends State<PresetSidebar> {
     final count = (from - to).abs() + 1;
     final seconds = (count * 1.4).ceil();
     final shift = from < to
-        ? 'Presets ${_pad(from + 1)}–${_pad(to)} move up one slot.'
-        : 'Presets ${_pad(to)}–${_pad(from - 1)} move down one slot.';
+        ? tr('Presets {0}–{1} move up one slot.', [_pad(from + 1), _pad(to)])
+        : tr('Presets {0}–{1} move down one slot.', [_pad(to), _pad(from - 1)]);
     final ok = await _confirm(
-      'Move preset',
-      'Move ${_pad(from)} "${_nameOf(from)}" to position ${_pad(to)}?\n\n'
-          '$shift This reads and rewrites $count presets on the pedal '
-          '(about $seconds s). Do not unplug the pedal meanwhile.',
+      tr('Move preset'),
+      tr(
+        'Move {0} "{1}" to position {2}?\n\n{3} This reads and rewrites {4} presets on the pedal (about {5} s). Do not unplug the pedal meanwhile.',
+        [_pad(from), _nameOf(from), _pad(to), shift, count, seconds],
+      ),
       'MOVE',
     );
     if (ok) widget.onMovePreset!(from, to);
+  }
+
+  bool get _canTransfer => widget.canEditPresets;
+
+  /// Multi-selection of presets to export (Software Guide p. 12: CTRL-click
+  /// several presets and drag them to the computer area).
+  Future<void> _pickPresetsToExport() async {
+    final selected = <int>{widget.activePatchNumber};
+    final result = await showDialog<List<int>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: Text(tr('Export presets (.pfl)')),
+          content: SizedBox(
+            width: 360,
+            height: 420,
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Text(tr('{0} selected', [selected.length])),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: () => setLocal(() {
+                        selected.addAll(
+                          List<int>.generate(
+                            Fx200Constants.presetPatchCount,
+                            (i) => i,
+                          ),
+                        );
+                      }),
+                      child: Text(tr('ALL')),
+                    ),
+                    TextButton(
+                      onPressed: () => setLocal(selected.clear),
+                      child: Text(tr('NONE')),
+                    ),
+                  ],
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: Fx200Constants.presetPatchCount,
+                    itemBuilder: (_, i) => CheckboxListTile(
+                      dense: true,
+                      value: selected.contains(i),
+                      title: Text('${_pad(i)}  ${_nameOf(i)}'),
+                      onChanged: (v) => setLocal(() {
+                        if (v ?? false) {
+                          selected.add(i);
+                        } else {
+                          selected.remove(i);
+                        }
+                      }),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text(tr('CANCEL')),
+            ),
+            FilledButton(
+              onPressed: selected.isEmpty
+                  ? null
+                  : () => Navigator.of(ctx).pop(selected.toList()..sort()),
+              child: Text(tr('EXPORT...')),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result != null && result.isNotEmpty) {
+      widget.onExportPresets?.call(result);
+    }
   }
 
   Future<void> _showContextMenu(Offset globalPosition, int index) async {
@@ -144,24 +235,37 @@ class _PresetSidebarState extends State<PresetSidebar> {
         PopupMenuItem<String>(
           value: 'copy',
           enabled: widget.canEditPresets && widget.onCopyPreset != null,
-          child: Text('Copy ${_pad(index)}'),
+          child: Text(tr('Copy {0}', [_pad(index)])),
         ),
         PopupMenuItem<String>(
           value: 'paste',
           enabled: _canPaste,
           child: Text(
             widget.clipboardLabel == null
-                ? 'Paste here'
-                : 'Paste ${widget.clipboardLabel} here',
+                ? tr('Paste here')
+                : tr('Paste {0} here', [widget.clipboardLabel]),
           ),
         ),
         PopupMenuItem<String>(
           value: 'clear',
           enabled: _canClear,
-          child: Text('Clear ${_pad(index)}...'),
+          child: Text(tr('Clear {0}...', [_pad(index)])),
+        ),
+        const PopupMenuDivider(),
+        PopupMenuItem<String>(
+          value: 'export',
+          enabled: _canTransfer && widget.onExportPresets != null,
+          child: Text(tr('Export {0} to .pfl...', [_pad(index)])),
+        ),
+        PopupMenuItem<String>(
+          value: 'import',
+          enabled: _canTransfer && widget.onImportPresets != null,
+          child: Text(tr('Import .pfl here...')),
         ),
       ],
     );
+    if (selected == 'export') widget.onExportPresets?.call(<int>[index]);
+    if (selected == 'import') widget.onImportPresets?.call(index);
     if (selected == 'clear') await _clear(index);
     if (selected == 'copy') widget.onCopyPreset?.call(index);
     if (selected == 'paste') await _paste(index);
@@ -195,8 +299,45 @@ class _PresetSidebarState extends State<PresetSidebar> {
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
             child: Row(
               children: [
-                Text('PRESETS', style: Theme.of(context).textTheme.labelSmall),
-                const Spacer(),
+                Expanded(
+                  child: Text(
+                    tr('PRESETS'),
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                ),
+                if (widget.onExportPresets != null)
+                  IconButton(
+                    tooltip: tr('Export presets to .pfl files'),
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 26,
+                      height: 26,
+                    ),
+                    iconSize: 16,
+                    onPressed: _canTransfer ? _pickPresetsToExport : null,
+                    icon: const Icon(Icons.file_download_outlined),
+                  ),
+                if (widget.onImportPresets != null)
+                  IconButton(
+                    tooltip: tr(
+                      'Import .pfl files into the active slot onwards',
+                    ),
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 26,
+                      height: 26,
+                    ),
+                    iconSize: 16,
+                    onPressed: _canTransfer
+                        ? () =>
+                              widget.onImportPresets!(widget.activePatchNumber)
+                        : null,
+                    icon: const Icon(Icons.file_upload_outlined),
+                  ),
+                const SizedBox(width: 4),
                 Text(
                   widget.isSyncing
                       ? 'SYNC ${widget.presetNames.length}/${Fx200Constants.presetPatchCount}'
@@ -231,7 +372,7 @@ class _PresetSidebarState extends State<PresetSidebar> {
               style: Theme.of(context).textTheme.bodySmall,
               decoration: InputDecoration(
                 isDense: true,
-                hintText: 'Search presets...',
+                hintText: tr('Search presets...'),
                 prefixIcon: Icon(Icons.search, size: 16, color: ext.textMuted),
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 10,
@@ -262,7 +403,7 @@ class _PresetSidebarState extends State<PresetSidebar> {
                         ? () => widget.onCopyPreset!(widget.activePatchNumber)
                         : null,
                     icon: const Icon(Icons.copy, size: 14),
-                    label: const Text('COPY'),
+                    label: Text(tr('COPY')),
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -273,12 +414,12 @@ class _PresetSidebarState extends State<PresetSidebar> {
                         ? () => _paste(widget.activePatchNumber)
                         : null,
                     icon: const Icon(Icons.content_paste, size: 14),
-                    label: const Text('PASTE'),
+                    label: Text(tr('PASTE')),
                   ),
                 ),
                 const SizedBox(width: 6),
                 Tooltip(
-                  message: 'Clear the active preset',
+                  message: tr('Clear the active preset'),
                   child: OutlinedButton(
                     style: _smallButton.copyWith(
                       minimumSize: const WidgetStatePropertyAll(Size(34, 30)),
@@ -296,7 +437,7 @@ class _PresetSidebarState extends State<PresetSidebar> {
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
               child: Text(
-                'Clipboard: ${widget.clipboardLabel}',
+                tr('Clipboard: {0}', [widget.clipboardLabel]),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.labelSmall
@@ -404,7 +545,7 @@ class _PresetSidebarState extends State<PresetSidebar> {
                                 child: MouseRegion(
                                   cursor: SystemMouseCursors.grab,
                                   child: Tooltip(
-                                    message: 'Drag to move this preset',
+                                    message: tr('Drag to move this preset'),
                                     waitDuration: const Duration(
                                       milliseconds: 600,
                                     ),

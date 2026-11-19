@@ -22,8 +22,6 @@ class _ConnectedEditor extends EditorNotifier {
 }
 
 class _FakeDeviceSettings extends DeviceSettingsNotifier {
-  final List<Fx200FootswitchConfig> sentFootswitch = <Fx200FootswitchConfig>[];
-
   @override
   DeviceSettingsState build() => DeviceSettingsState(
     global: Fx200GlobalSettings.fromBody(
@@ -31,22 +29,11 @@ class _FakeDeviceSettings extends DeviceSettingsNotifier {
         ..[18] = 100
         ..[28] = 1,
     ),
-    footswitch: const Fx200FootswitchConfig(
-      mode: Fx200FootswitchConfig.modeCtrl,
-      ctrlMask: 0x0002,
-      bpm: 120,
-    ),
   );
 
   @override
   void updateGlobal(Fx200GlobalSettings next) {
     state = state.copyWith(global: next);
-  }
-
-  @override
-  void updateFootswitch(Fx200FootswitchConfig next) {
-    sentFootswitch.add(next);
-    state = state.copyWith(footswitch: next, footswitchUnsaved: true);
   }
 }
 
@@ -119,23 +106,21 @@ void main() {
     );
   });
 
-  testWidgets('FOOTSWITCH dialog assigns CTRL modules', (tester) async {
+  testWidgets('FOOTSWITCH dialog edits the preset controls', (tester) async {
     tester.view.physicalSize = const Size(1400, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    final fake = _FakeDeviceSettings();
+    final editor = _FootswitchEditor();
     await tester.pumpWidget(
       _host(
         const FootswitchDialog(),
-        overrides: [
-          editorProvider.overrideWith(_ConnectedEditor.new),
-          deviceSettingsProvider.overrideWith(() => fake),
-        ],
+        overrides: [editorProvider.overrideWith(() => editor)],
       ),
     );
     await tester.tap(find.text('MOD'));
     await tester.pump();
-    expect(fake.sentFootswitch.last.ctrlMask, 0x0082);
+    expect(editor.edits.last.ctrlMask, 0x0082);
+    expect(editor.edits.last.footswitchMode, 1);
     expect(find.textContaining('Not saved'), findsOneWidget);
   });
 }
@@ -147,4 +132,39 @@ class _ConnectedEditorDisconnected extends EditorNotifier {
     selectedBlockId: null,
     catalog: <CatalogModel>[],
   );
+}
+
+/// Editor whose active preset has a known footswitch setup (CTRL, DS/OD).
+class _FootswitchEditor extends EditorNotifier {
+  final List<PresetControls> edits = <PresetControls>[];
+
+  @override
+  EditorState build() => const EditorState(
+    preset: Preset(
+      id: 'p',
+      patchNumber: 0,
+      name: 'Test',
+      activeScene: 'A',
+      bpm: 120,
+      outputLevelDb: 0,
+      blocks: <EffectBlock>[],
+      controls: PresetControls(
+        footswitchKnown: true,
+        footswitchMode: 1,
+        ctrlMask: 0x0002,
+      ),
+    ),
+    selectedBlockId: null,
+    catalog: <CatalogModel>[],
+    isHardwareConnected: true,
+  );
+
+  @override
+  void editControls(PresetControls next, {bool recordHistory = true}) {
+    edits.add(next);
+    state = state.copyWith(
+      preset: state.preset!.copyWith(controls: next),
+      hasUnsavedChanges: true,
+    );
+  }
 }

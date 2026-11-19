@@ -8,6 +8,7 @@ import '../../services/fx200_protocol.dart';
 import '../state/device_settings_notifier.dart';
 import '../state/editor_notifier.dart';
 import 'global_eq_graph.dart';
+import '../../core/l10n/l10n.dart';
 
 Future<void> showGlobalSettingsDialog(BuildContext context) {
   return showDialog<void>(
@@ -32,13 +33,12 @@ class GlobalSettingsDialog extends ConsumerWidget {
 
     Widget body;
     if (!connected) {
-      body = const DeviceNotice(
-        'Connect the FX200 to edit its SYSTEM settings.',
-      );
+      body = DeviceNotice(tr('Connect the FX200 to edit its SYSTEM settings.'));
     } else if (settings == null) {
-      body = const DeviceNotice(
-        'Waiting for the SYSTEM block (0xA1). It arrives with the preset '
-        'sync after connecting.',
+      body = DeviceNotice(
+        tr(
+          'Waiting for the SYSTEM block (0xA1). It arrives with the preset sync after connecting.',
+        ),
       );
     } else {
       void set(Fx200GlobalSettings next) => notifier.updateGlobal(next);
@@ -55,8 +55,8 @@ class GlobalSettingsDialog extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             DeviceDialogHeader(
-              title: 'SYSTEM · GLOBAL SETTINGS',
-              subtitle: 'Applied to the pedal immediately',
+              title: tr('SYSTEM · GLOBAL SETTINGS'),
+              subtitle: tr('Applied to the pedal immediately'),
             ),
             Flexible(child: body),
           ],
@@ -83,42 +83,54 @@ class _SettingsBody extends StatelessWidget {
         children: [
           const _Section('DISPLAY'),
           _IntSlider(
-            label: 'BRIGHTNESS',
+            label: tr('BRIGHTNESS'),
             value: s.brightness,
             min: 0,
             max: 100,
             onChanged: (v) => onChanged(s.withBrightness(v)),
           ),
+          const _Section('INPUT'),
+          _IntSlider(
+            label: tr('INPUT LEVEL'),
+            hint: tr(
+              'Global input gain, as in the official editor (0 to 20 dB)',
+            ),
+            value: s.inputLevelDb,
+            min: 0,
+            max: 20,
+            suffix: ' dB',
+            onChanged: (v) => onChanged(s.withInputLevelDb(v)),
+          ),
           const _Section('CAB'),
           _Toggle(
-            label: 'CAB SYNC',
-            hint: 'Changing the AMP model also picks its matching cabinet',
+            label: tr('CAB SYNC'),
+            hint: tr('Changing the AMP model also picks its matching cabinet'),
             value: s.cabSync,
             onChanged: (v) => onChanged(s.withCabSync(v)),
           ),
           _Row(
-            label: 'GLOBAL CAB',
-            hint: 'Cab sim on the left / right output channel',
+            label: tr('GLOBAL CAB'),
+            hint: tr('Cab sim on the left / right output channel'),
             child: Wrap(
               spacing: 8,
               children: [
                 FilterChip(
-                  label: const Text('LEFT'),
+                  label: Text(tr('LEFT')),
                   selected: s.globalCabLeft,
                   onSelected: (v) => onChanged(s.withGlobalCabLeft(v)),
                 ),
                 FilterChip(
-                  label: const Text('RIGHT'),
+                  label: Text(tr('RIGHT')),
                   selected: s.globalCabRight,
                   onSelected: (v) => onChanged(s.withGlobalCabRight(v)),
                 ),
               ],
             ),
           ),
-          const _Section('FOOTSWITCH & LOOPER'),
+          _Section(tr('FOOTSWITCH & LOOPER')),
           _Row(
-            label: 'FS MODE',
-            hint: 'NORMAL: banks + A/B · FAVORITE: 4 favorite presets',
+            label: tr('FS MODE'),
+            hint: tr('NORMAL: banks + A/B · FAVORITE: 4 favorite presets'),
             child: _Choice<int>(
               value: s.fsMode,
               options: const <int, String>{
@@ -130,13 +142,13 @@ class _SettingsBody extends StatelessWidget {
             ),
           ),
           _Toggle(
-            label: 'DLY / REV SPILL-OVER',
-            hint: 'Let delay and reverb tails ring out when switching',
+            label: tr('DLY / REV SPILL-OVER'),
+            hint: tr('Let delay and reverb tails ring out when switching'),
             value: s.spillOver,
             onChanged: (v) => onChanged(s.withSpillOver(v)),
           ),
           _Row(
-            label: 'LOOPER POSITION',
+            label: tr('LOOPER POSITION'),
             child: _Choice<bool>(
               value: s.looperPost,
               options: const <bool, String>{false: 'PRE', true: 'POST'},
@@ -145,8 +157,8 @@ class _SettingsBody extends StatelessWidget {
           ),
           const _Section('GLOBAL EQ'),
           _Toggle(
-            label: 'GLOBAL EQ',
-            hint: 'Applies to OUTPUT / XLR OUT / PHONES',
+            label: tr('GLOBAL EQ'),
+            hint: tr('Applies to OUTPUT / XLR OUT / PHONES'),
             value: eqOn,
             onChanged: (v) => onChanged(s.withGlobalEqEnabled(v)),
           ),
@@ -162,12 +174,12 @@ class _SettingsBody extends StatelessWidget {
               tilePadding: EdgeInsets.zero,
               childrenPadding: EdgeInsets.zero,
               title: Text(
-                'EXACT VALUES',
+                tr('EXACT VALUES'),
                 style: Theme.of(context).textTheme.labelSmall,
               ),
               children: [
                 _EqBand(
-                  label: 'LOW',
+                  label: tr('LOW'),
                   enabled: eqOn,
                   freqHz: s.eqLowFreqHz,
                   gain: s.eqLowGain,
@@ -175,7 +187,7 @@ class _SettingsBody extends StatelessWidget {
                   onGain: (v) => onChanged(s.withEqLowGain(v)),
                 ),
                 _EqBand(
-                  label: 'MID',
+                  label: tr('MID'),
                   enabled: eqOn,
                   freqHz: s.eqMidFreqHz,
                   gain: s.eqMidGain,
@@ -183,7 +195,7 @@ class _SettingsBody extends StatelessWidget {
                   onGain: (v) => onChanged(s.withEqMidGain(v)),
                 ),
                 _EqBand(
-                  label: 'HIGH',
+                  label: tr('HIGH'),
                   enabled: eqOn,
                   freqHz: s.eqHighFreqHz,
                   gain: s.eqHighGain,
@@ -191,7 +203,7 @@ class _SettingsBody extends StatelessWidget {
                   onGain: (v) => onChanged(s.withEqHighGain(v)),
                 ),
                 _FreqSlider(
-                  label: 'LOW CUT',
+                  label: tr('LOW CUT'),
                   enabled: eqOn,
                   valueHz: s.eqLowCutHz,
                   minHz: 40,
@@ -199,7 +211,7 @@ class _SettingsBody extends StatelessWidget {
                   onChanged: (v) => onChanged(s.withEqLowCutHz(v)),
                 ),
                 _FreqSlider(
-                  label: 'HIGH CUT',
+                  label: tr('HIGH CUT'),
                   enabled: eqOn,
                   valueHz: s.eqHighCutHz,
                   minHz: 3000,
@@ -211,15 +223,15 @@ class _SettingsBody extends StatelessWidget {
           ),
           const _Section('MIDI'),
           _Row(
-            label: 'MIDI PORT',
+            label: tr('MIDI PORT'),
             child: _Choice<bool>(
               value: s.midiOut,
-              options: const <bool, String>{false: 'MIDI IN', true: 'MIDI OUT'},
+              options: <bool, String>{false: 'MIDI IN', true: tr('MIDI OUT')},
               onChanged: (v) => onChanged(s.withMidiOut(v)),
             ),
           ),
           _Row(
-            label: 'MIDI CHANNEL',
+            label: tr('MIDI CHANNEL'),
             child: DropdownButton<int>(
               value: s.midiChannel.clamp(
                 0,
@@ -230,24 +242,27 @@ class _SettingsBody extends StatelessWidget {
               },
               items: [
                 for (var ch = 0; ch < 16; ch++)
-                  DropdownMenuItem<int>(value: ch, child: Text('CH ${ch + 1}')),
+                  DropdownMenuItem<int>(
+                    value: ch,
+                    child: Text(tr('CH {0}', [ch + 1])),
+                  ),
                 if (!s.midiOut)
-                  const DropdownMenuItem<int>(
+                  DropdownMenuItem<int>(
                     value: Fx200GlobalSettings.midiChannelOmni,
-                    child: Text('OMNI'),
+                    child: Text(tr('OMNI')),
                   ),
               ],
             ),
           ),
           _Toggle(
-            label: 'SYNC CLOCK',
-            hint: 'Receive (IN) or send (OUT) MIDI clock',
+            label: tr('SYNC CLOCK'),
+            hint: tr('Receive (IN) or send (OUT) MIDI clock'),
             value: s.midiClockSync,
             onChanged: (v) => onChanged(s.withMidiClockSync(v)),
           ),
-          const _Section('USB AUDIO'),
+          _Section(tr('USB AUDIO')),
           _Row(
-            label: 'LEFT OUTPUT',
+            label: tr('LEFT OUTPUT'),
             child: _Choice<bool>(
               value: s.usbLeftDry,
               options: const <bool, String>{false: 'EFFECTS', true: 'DRY'},
@@ -255,7 +270,7 @@ class _SettingsBody extends StatelessWidget {
             ),
           ),
           _Row(
-            label: 'RIGHT OUTPUT',
+            label: tr('RIGHT OUTPUT'),
             child: _Choice<bool>(
               value: s.usbRightDry,
               options: const <bool, String>{false: 'EFFECTS', true: 'DRY'},
@@ -263,22 +278,22 @@ class _SettingsBody extends StatelessWidget {
             ),
           ),
           _IntSlider(
-            label: 'REC VOL',
+            label: tr('REC VOL'),
             value: s.usbRecVol,
             min: 0,
             max: 100,
             onChanged: (v) => onChanged(s.withUsbRecVol(v)),
           ),
           _IntSlider(
-            label: 'PLAY VOL',
+            label: tr('PLAY VOL'),
             value: s.usbPlayVol,
             min: 0,
             max: 100,
             onChanged: (v) => onChanged(s.withUsbPlayVol(v)),
           ),
           _IntSlider(
-            label: 'MIX',
-            hint: '0 = direct monitoring only · 100 = USB playback only',
+            label: tr('MIX'),
+            hint: tr('0 = direct monitoring only · 100 = USB playback only'),
             value: s.usbMix,
             min: 0,
             max: 100,
@@ -314,7 +329,7 @@ class _EqBand extends StatelessWidget {
       children: [
         Expanded(
           child: _FreqSlider(
-            label: '$label FREQ',
+            label: tr('{0} FREQ', [label]),
             enabled: enabled,
             valueHz: freqHz,
             minHz: 40,
@@ -325,7 +340,7 @@ class _EqBand extends StatelessWidget {
         const SizedBox(width: 12),
         Expanded(
           child: _LabeledSlider(
-            label: '$label GAIN',
+            label: tr('{0} GAIN', [label]),
             valueLabel: '${db >= 0 ? '+' : ''}${db.toStringAsFixed(1)} dB',
             value: gain.clamp(0, Fx200GlobalSettings.eqGainMax).toDouble(),
             min: 0,
@@ -388,10 +403,12 @@ class _IntSlider extends StatelessWidget {
     required this.max,
     required this.onChanged,
     this.hint,
+    this.suffix = '',
   });
 
   final String label;
   final String? hint;
+  final String suffix;
   final int value;
   final int min;
   final int max;
@@ -402,7 +419,7 @@ class _IntSlider extends StatelessWidget {
     return _LabeledSlider(
       label: label,
       hint: hint,
-      valueLabel: '$value',
+      valueLabel: '$value$suffix',
       value: value.clamp(min, max).toDouble(),
       min: min.toDouble(),
       max: max.toDouble(),
@@ -574,7 +591,7 @@ class _Section extends StatelessWidget {
       child: Row(
         children: [
           Text(
-            title,
+            tr(title),
             style: Theme.of(context).textTheme.labelSmall
                 ?.copyWith(color: ext.textMuted, letterSpacing: 1.2),
           ),
@@ -641,7 +658,7 @@ class DeviceDialogHeader extends StatelessWidget {
             ),
           ),
           IconButton(
-            tooltip: 'Close',
+            tooltip: tr('Close'),
             icon: const Icon(Icons.close, size: 18),
             onPressed: () => Navigator.of(context).pop(),
           ),
@@ -661,9 +678,12 @@ class _EqHint extends StatelessWidget {
     final ext = Theme.of(context).extension<FxEditorThemeExtension>()!;
     return Text(
       enabled
-          ? 'Drag L / M / H for frequency + gain, LC / HC for the cuts. '
-                'Double-click a node to reset it.'
-          : 'Turn GLOBAL EQ on to edit (the pedal ignores the values while off).',
+          ? tr(
+              'Drag L / M / H for frequency + gain, LC / HC for the cuts. Double-click a node to reset it.',
+            )
+          : tr(
+              'Turn GLOBAL EQ on to edit (the pedal ignores the values while off).',
+            ),
       style: Theme.of(context).textTheme.bodySmall
           ?.copyWith(color: ext.textMuted),
     );
