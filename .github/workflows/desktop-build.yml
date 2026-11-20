@@ -46,3 +46,8 @@ jobs:
       - run: flutter pub get
       - run: flutter test
       - run: flutter build linux --release
+      - run: tar -czf fx200_studio-linux.tar.gz -C build/linux/x64/release/bundle .
+      - uses: actions/upload-artifact@v5
+        with:
+          name: fx200_studio-linux
+          path: fx200_studio-linux.tar.gz
