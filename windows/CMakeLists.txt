@@ -62,6 +62,8 @@ include(flutter/generated_plugins.cmake)
 # hidapi (no driver swap / Zadig needed). Built from source and shipped next to
 # the executable as hidapi.dll (loaded by lib/services/hidapi_session.dart).
 include(FetchContent)
+# hidapi 0.14 declares cmake_minimum_required < 3.5, rejected by CMake 4.
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
 set(HIDAPI_WITH_TESTS OFF CACHE BOOL "" FORCE)
 set(HIDAPI_INSTALL_TARGETS OFF CACHE BOOL "" FORCE)
