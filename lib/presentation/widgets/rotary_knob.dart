@@ -164,6 +164,12 @@ class _RotaryKnobState extends State<RotaryKnob> {
     return v.roundToDouble().clamp(widget.min, widget.max);
   }
 
+  void _endDrag() {
+    if (!_isDragging) return;
+    setState(() => _isDragging = false);
+    widget.onChangeEnd?.call(widget.value);
+  }
+
   void _onTapUp(TapUpDetails details) {
     final now = DateTime.now();
     final last = _lastTapTime;
@@ -253,10 +259,12 @@ class _RotaryKnobState extends State<RotaryKnob> {
             );
             widget.onChanged(next.roundToDouble());
           },
-          onVerticalDragEnd: (_) {
-            setState(() => _isDragging = false);
-            widget.onChangeEnd?.call(widget.value);
-          },
+          onVerticalDragEnd: (_) => _endDrag(),
+          // A drag can also be cancelled (button released outside the
+          // window, focus lost, gesture taken by another widget). Without
+          // this the knob stayed in "dragging" state and the last value was
+          // neither sent to the pedal nor recorded for undo.
+          onVerticalDragCancel: _endDrag,
           child: MouseRegion(
             cursor: SystemMouseCursors.click,
             child: SizedBox(

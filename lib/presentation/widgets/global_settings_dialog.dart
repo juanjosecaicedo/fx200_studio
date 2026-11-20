@@ -29,6 +29,9 @@ class GlobalSettingsDialog extends ConsumerWidget {
       editorProvider.select((s) => s.isHardwareConnected),
     );
     final settings = ref.watch(deviceSettingsProvider).global;
+    final pedalScenes = ref.watch(
+      editorProvider.select((s) => s.pedalScenesActive),
+    );
     final notifier = ref.read(deviceSettingsProvider.notifier);
 
     Widget body;
@@ -42,7 +45,11 @@ class GlobalSettingsDialog extends ConsumerWidget {
       );
     } else {
       void set(Fx200GlobalSettings next) => notifier.updateGlobal(next);
-      body = _SettingsBody(settings: settings, onChanged: set);
+      body = _SettingsBody(
+        settings: settings,
+        onChanged: set,
+        pedalScenes: pedalScenes,
+      );
     }
 
     return Dialog(
@@ -67,10 +74,17 @@ class GlobalSettingsDialog extends ConsumerWidget {
 }
 
 class _SettingsBody extends StatelessWidget {
-  const _SettingsBody({required this.settings, required this.onChanged});
+  const _SettingsBody({
+    required this.settings,
+    required this.onChanged,
+    this.pedalScenes = false,
+  });
 
   final Fx200GlobalSettings settings;
   final ValueChanged<Fx200GlobalSettings> onChanged;
+
+  /// The pedal runs the custom scenes firmware: offer FS MODE SCENE.
+  final bool pedalScenes;
 
   @override
   Widget build(BuildContext context) {
@@ -130,15 +144,24 @@ class _SettingsBody extends StatelessWidget {
           _Section(tr('FOOTSWITCH & LOOPER')),
           _Row(
             label: tr('FS MODE'),
-            hint: tr('NORMAL: banks + A/B · FAVORITE: 4 favorite presets'),
+            hint: pedalScenes
+                ? tr(
+                    'NORMAL: banks + A/B · FAVORITE: 4 favorite presets · SCENE: the 4 footswitches select scenes 1-4 (custom firmware)',
+                  )
+                : tr('NORMAL: banks + A/B · FAVORITE: 4 favorite presets'),
             child: _Choice<int>(
               value: s.fsMode,
-              options: const <int, String>{
+              options: <int, String>{
                 Fx200GlobalSettings.fsModeNormal: 'NORMAL',
                 Fx200GlobalSettings.fsModeFavorite: 'FAVORITE',
                 Fx200GlobalSettings.fsModeDual: 'DUAL',
+                // Also shown if the pedal reports 3 without the marker, so
+                // the current value is never hidden.
+                if (pedalScenes || s.fsMode == Fx200GlobalSettings.fsModeScene)
+                  Fx200GlobalSettings.fsModeScene: 'SCENE',
               },
-              onChanged: (v) => onChanged(s.withFsMode(v)),
+              onChanged: (v) =>
+                  onChanged(s.withFsMode(v, allowScene: pedalScenes)),
             ),
           ),
           _Toggle(

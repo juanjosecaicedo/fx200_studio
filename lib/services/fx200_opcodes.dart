@@ -14,6 +14,11 @@ enum Fx200Evidence {
 
   /// Seen or guessed, meaning not established. Never write it.
   unknown,
+
+  /// Defined by FX200 Studio's own firmware patch
+  /// (`fx200/firmware_patch/scenes`). Only sent when the pedal's `0x84`
+  /// marker says that patch is installed (see [fx200CheckSendable]).
+  customFirmware,
 }
 
 enum Fx200Direction { toPedal, fromPedal, both }
@@ -68,6 +73,13 @@ final List<Fx200OpcodeInfo> fx200Opcodes = List<Fx200OpcodeInfo>.unmodifiable(
       'captura.pcapng; FX200.exe',
     ),
     const Fx200OpcodeInfo(
+      0x10,
+      'Answer to 0x84: [0x84, 16-byte device string]',
+      Fx200Direction.fromPedal,
+      Fx200Evidence.fromEditorCode,
+      'U102 firmware handler 0x4528 (0x84 request -> 0x10 answer)',
+    ),
+    const Fx200OpcodeInfo(
       0x82,
       'Module page / UI state (meaning unknown)',
       Fx200Direction.both,
@@ -84,10 +96,11 @@ final List<Fx200OpcodeInfo> fx200Opcodes = List<Fx200OpcodeInfo>.unmodifiable(
     ),
     const Fx200OpcodeInfo(
       0x84,
-      'Handshake / device info',
+      'Handshake / device info ("FX200" + scenes-firmware marker)',
       Fx200Direction.both,
       Fx200Evidence.captured,
-      'FX200.exe sub_402520; captura.pcapng',
+      'FX200.exe sub_402520; import-IRs.pcapng; U102 handler 0x4528 '
+          '(only answers)',
     ),
     const Fx200OpcodeInfo(
       0x85,
@@ -276,6 +289,14 @@ final List<Fx200OpcodeInfo> fx200Opcodes = List<Fx200OpcodeInfo>.unmodifiable(
       'captura4.pcapng; firmware test',
       mode: Fx200UsbMode.update,
     ),
+    // ---- FX200 Studio scenes firmware (not in the stock firmware) -------
+    const Fx200OpcodeInfo(
+      0xf5,
+      'Pedal scenes: info / select / read / write (custom firmware v2)',
+      Fx200Direction.both,
+      Fx200Evidence.customFirmware,
+      'fx200/firmware_patch/scenes/scenes.c (scenes_usb_hook, hook at 0x6E64)',
+    ),
   ],
 );
 
@@ -300,9 +321,14 @@ class Fx200ForbiddenCommand implements Exception {
 
 /// The single gate every outgoing packet passes: only documented commands,
 /// with known meaning and used by the app, may reach the pedal.
+///
+/// Commands of the custom firmware ([Fx200Evidence.customFirmware]) also
+/// need [customFirmware] = true, which the caller sets only when the
+/// connected pedal reported that firmware.
 Fx200OpcodeInfo fx200CheckSendable(
   int opcode, {
   Fx200UsbMode mode = Fx200UsbMode.normal,
+  bool customFirmware = false,
 }) {
   final hex = '0x${opcode.toRadixString(16).padLeft(2, '0').toUpperCase()}';
   final info = fx200OpcodeInfo(opcode, mode: mode);
@@ -314,6 +340,11 @@ Fx200OpcodeInfo fx200CheckSendable(
   if (!info.usedByApp || info.evidence == Fx200Evidence.unknown) {
     throw Fx200ForbiddenCommand(
       '$hex (${info.name}) must not be sent: ${info.evidence.name}.',
+    );
+  }
+  if (info.evidence == Fx200Evidence.customFirmware && !customFirmware) {
+    throw Fx200ForbiddenCommand(
+      '$hex (${info.name}) needs the FX200 Studio firmware patch.',
     );
   }
   if (info.direction == Fx200Direction.fromPedal) {

@@ -28,11 +28,15 @@ const Map<String, String> stringsEs = <String, String>{
   'BACK TO EDITOR': 'VOLVER AL EDITOR',
   'NAM A2 / IR TOOLS': 'HERRAMIENTAS NAM A2 / IR',
   'FX200 STUDIO · CORTEX/AMPERO EDITOR': 'FX200 STUDIO · EDITOR',
-  'Scenes: click to apply (empty = store the current sound), right-click to save or clear':
-      'Escenas: clic para aplicar (vacía = guardar el sonido actual), clic '
-      'derecho para guardar o vaciar',
+  'Scenes: click to switch (a new scene starts as a copy of the current sound). Edits stay in the active scene and are stored with Save. Right-click to copy the sound or clear':
+      'Escenas: clic para cambiar (una escena nueva empieza como copia del '
+      'sonido actual). Lo que edites se queda en la escena activa y se '
+      'guarda con Guardar. Clic derecho para copiar el sonido o vaciarla',
   'Save the current sound in scene {0}':
       'Guardar el sonido actual en la escena {0}',
+  'Scenes are handled by the pedal (FS MODE SCENE): use its footswitches. Save stores them on the pedal.':
+      'Las escenas las gestiona la pedalera (FS MODE SCENE): usa sus '
+      'footswitches. Guardar las almacena en la pedalera.',
   'Clear scene {0}': 'Vaciar la escena {0}',
   'Scenes: not supported by the current FX200 firmware':
       'Escenas: no disponibles con el firmware actual de la FX200',
@@ -247,6 +251,9 @@ const Map<String, String> stringsEs = <String, String>{
       'Al cambiar el modelo de AMP también se elige su gabinete',
   'Cab sim on the left / right output channel':
       'Simulación de gabinete en el canal de salida izquierdo / derecho',
+  'NORMAL: banks + A/B · FAVORITE: 4 favorite presets · SCENE: the 4 footswitches select scenes 1-4 (custom firmware)':
+      'NORMAL: bancos + A/B · FAVORITE: 4 presets favoritos · SCENE: los 4 '
+      'footswitches eligen las escenas 1-4 (firmware modificado)',
   'NORMAL: banks + A/B · FAVORITE: 4 favorite presets':
       'NORMAL: bancos + A/B · FAVORITE: 4 presets favoritos',
   'Let delay and reverb tails ring out when switching':
@@ -367,4 +374,21 @@ const Map<String, String> stringsEs = <String, String>{
   'Audio engine (DSP MCU)': 'Motor de audio (MCU DSP)',
   'Audio resources': 'Recursos de audio',
   'Factory presets': 'Presets de fábrica',
+  'Compare scenes...': 'Comparar escenas...',
+  'Pedal scenes': 'Escenas del pedal',
+  'Pedal scenes - preset {0}': 'Escenas del pedal - preset {0}',
+  'Read again from the pedal': 'Volver a leer del pedal',
+  'Scenes are stored on the pedal. Click a scene to play it; edits go to the scene being played. Copies stay on the pedal until you Save the preset.': 'Las escenas se guardan en el pedal. Haz clic en una escena para activarla; las ediciones van a la escena que suena. Las copias quedan en el pedal hasta que guardes el preset.',
+  'Pedal scenes need the FX200 Studio firmware in FS MODE SCENE.': 'Las escenas del pedal necesitan el firmware de FX200 Studio en FS MODE SCENE.',
+  'Copy scene': 'Copiar escena',
+  'to': 'a',
+  'CLOSE': 'CERRAR',
+  'Scene being played': 'Escena que suena',
+  'Play scene {0} on the pedal': 'Activar la escena {0} en el pedal',
+  'Differs in: {0}': 'Cambia en: {0}',
+  'on/off': 'encendido',
+  'model': 'modelo',
+  'The active pedal scene is unknown.':
+      'No se sabe qué escena está activa en el pedal.',
+  'Pedal scenes: click to play a scene on the pedal (like its footswitches). Edits go to the scene being played and are stored on the pedal with Save. Right-click to copy the sound or compare the scenes': 'Escenas del pedal: haz clic para activar una escena en el pedal (como sus footswitches). Las ediciones van a la escena que suena y se guardan en el pedal con Guardar. Clic derecho para copiar el sonido o comparar las escenas',
 };

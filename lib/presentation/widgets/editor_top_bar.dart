@@ -22,6 +22,9 @@ class EditorTopBar extends StatefulWidget {
     this.activeScene,
     this.filledScenes = const <String>{},
     this.activeSceneModified = false,
+    this.scenesDisabledReason,
+    this.scenesTooltip,
+    this.onCompareScenes,
     required this.onUndo,
     required this.onRedo,
     required this.onSave,
@@ -59,6 +62,16 @@ class EditorTopBar extends StatefulWidget {
   final String? activeScene;
   final Set<String> filledScenes;
   final bool activeSceneModified;
+
+  /// Why the scene buttons are disabled (e.g. the pedal handles scenes
+  /// itself); null = generic "not supported" text.
+  final String? scenesDisabledReason;
+
+  /// Tooltip of the enabled scene buttons (default: app-side scenes).
+  final String? scenesTooltip;
+
+  /// Opens the scene comparison (pedal scenes); adds a menu entry.
+  final VoidCallback? onCompareScenes;
   final VoidCallback onUndo;
   final VoidCallback onRedo;
   final VoidCallback onSave;
@@ -124,15 +137,24 @@ class _EditorTopBarState extends State<EditorTopBar> {
           value: 'save',
           child: Text(tr('Save the current sound in scene {0}', [scene])),
         ),
-        PopupMenuItem<String>(
-          value: 'clear',
-          enabled: filled,
-          child: Text(tr('Clear scene {0}', [scene])),
-        ),
+        if (widget.onClearScene != null)
+          PopupMenuItem<String>(
+            value: 'clear',
+            enabled: filled,
+            child: Text(tr('Clear scene {0}', [scene])),
+          ),
+        if (widget.onCompareScenes != null) ...[
+          const PopupMenuDivider(),
+          PopupMenuItem<String>(
+            value: 'compare',
+            child: Text(tr('Compare scenes...')),
+          ),
+        ],
       ],
     );
     if (choice == 'save') widget.onSaveScene?.call(scene);
     if (choice == 'clear') widget.onClearScene?.call(scene);
+    if (choice == 'compare') widget.onCompareScenes?.call();
   }
 
   @override
@@ -246,15 +268,18 @@ class _EditorTopBarState extends State<EditorTopBar> {
               ),
             ),
 
-          // Scenes A-D. App-side for now (stored on this computer, applied
-          // through the module frames); a custom firmware will store them on
-          // the pedal. Disabled while [onSelectScene] is null.
+          // Scenes A-D: app-side (stored on this computer, applied through
+          // the module frames) or, with the FX200 Studio firmware in FS MODE
+          // SCENE, the pedal's own scenes. Disabled while [onSelectScene] is
+          // null.
           Tooltip(
             message: widget.onSelectScene == null
-                ? tr('Scenes: not supported by the current FX200 firmware')
-                : tr(
-                    'Scenes: click to apply (empty = store the current sound), right-click to save or clear',
-                  ),
+                ? (widget.scenesDisabledReason ??
+                      tr('Scenes: not supported by the current FX200 firmware'))
+                : (widget.scenesTooltip ??
+                      tr(
+                        'Scenes: click to switch (a new scene starts as a copy of the current sound). Edits stay in the active scene and are stored with Save. Right-click to copy the sound or clear',
+                      )),
             child: Opacity(
               opacity: widget.onSelectScene == null ? 0.45 : 1.0,
               child: Row(

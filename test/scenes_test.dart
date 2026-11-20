@@ -54,47 +54,81 @@ void main() {
   }
 
   test(
-    'save A, edit, save B, recall A: only the changed module is sent',
+    'edits stay in the active scene; switching sends only changes',
     () async {
       final file = File('${tmp.path}/scenes.json');
       final (c, sync, editor) = await start(file);
       addTearDown(c.dispose);
       final scenes = c.read(scenesProvider.notifier);
-
-      scenes.select('A'); // empty -> stores the current sound
-      expect(c.read(scenesProvider).has('A'), isTrue);
-      expect(c.read(scenesProvider).active, 'A');
-
       final block = c.read(editorProvider).preset!.blocks.first;
       final p = block.parameters.first;
-      final original = p.value;
-      final changed = p.value == p.max ? p.min : p.max;
-      editor.updateParameter(
+      double v() =>
+          c.read(editorProvider).preset!.blocks.first.parameters.first.value;
+      void set(double x) => editor.updateParameter(
         blockId: block.id,
         parameterId: p.id,
-        value: changed,
+        value: x,
       );
-      expect(c.read(scenesProvider).activeModified, isTrue);
 
-      scenes.save('B');
-      expect(c.read(scenesProvider).active, 'B');
-      expect(c.read(scenesProvider).activeModified, isFalse);
+      scenes.select('A'); // empty -> copy of the current sound
+      expect(c.read(scenesProvider).active, 'A');
+      set(p.min + 1); // belongs to A
+      scenes.select('B'); // empty -> copy of A
+      set(p.min + 2); // belongs to B only
+      scenes.select('C');
+      set(p.min + 3);
 
       sync.sent.clear();
       scenes.select('A');
-      final now = c.read(editorProvider).preset!.blocks.first;
-      expect(now.parameters.first.value, original);
+      expect(v(), p.min + 1);
       expect(sync.sent, [block.category.name]);
-      expect(c.read(scenesProvider).activeModified, isFalse);
-
-      // One undo step brings scene B's sound back.
-      editor.undo();
-      expect(
-        c.read(editorProvider).preset!.blocks.first.parameters.first.value,
-        changed,
-      );
+      scenes.select('B');
+      expect(v(), p.min + 2);
+      set(p.min + 7); // edit B again
+      scenes.select('C');
+      expect(v(), p.min + 3);
+      scenes.select('A');
+      expect(v(), p.min + 1);
+      scenes.select('B');
+      expect(v(), p.min + 7);
+      // Switching scene is not undoable into another scene's sound.
+      expect(c.read(editorProvider).canUndo, isFalse);
     },
   );
+
+  test('Save writes the scenes; leaving without saving discards', () async {
+    final file = File('${tmp.path}/scenes.json');
+    final (c, _, editor) = await start(file);
+    addTearDown(c.dispose);
+    final scenes = c.read(scenesProvider.notifier);
+    final block = c.read(editorProvider).preset!.blocks.first;
+    final p = block.parameters.first;
+    final patch = c.read(editorProvider).preset!.patchNumber;
+    double v() =>
+        c.read(editorProvider).preset!.blocks.first.parameters.first.value;
+    void set(double x) =>
+        editor.updateParameter(blockId: block.id, parameterId: p.id, value: x);
+
+    scenes.select('A');
+    set(p.min + 1);
+    scenes.select('B');
+    set(p.min + 2);
+    expect(file.existsSync(), isFalse); // nothing saved yet
+    expect(c.read(scenesProvider).activeModified, isTrue);
+    await editor.saveCurrentPreset();
+    expect(c.read(scenesProvider).activeModified, isFalse);
+    final disk = SceneStore(file: file).readAll()[patch]!;
+    expect(disk.active, 'B');
+    expect(disk.scenes.keys.toSet(), {'A', 'B'});
+
+    set(p.min + 9); // unsaved edit of B
+    await editor.loadPreset(patch + 1);
+    await editor.loadPreset(patch);
+    scenes.select('A');
+    expect(v(), p.min + 1);
+    scenes.select('B');
+    expect(v(), p.min + 2);
+  });
 
   test('scenes persist per preset slot and can be cleared', () async {
     final file = File('${tmp.path}/scenes.json');

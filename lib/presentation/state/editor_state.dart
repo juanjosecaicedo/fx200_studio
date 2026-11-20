@@ -20,6 +20,8 @@ class EditorState {
     this.isConnectingHardware = false,
     this.isSyncingPresets = false,
     this.hardwareStatus = 'USB OFFLINE',
+    this.saveCount = 0,
+    this.pedalScenes = false,
   });
 
   final Preset? preset;
@@ -39,6 +41,18 @@ class EditorState {
   final bool isConnectingHardware;
   final bool isSyncingPresets;
   final String hardwareStatus;
+
+  /// Incremented every time the active preset is saved to the pedal
+  /// (scenes are committed to disk on it).
+  final int saveCount;
+
+  /// The connected pedal runs the custom scenes firmware (marker in the
+  /// `0x84` device string): FS MODE can be set to SCENE and the pedal
+  /// stores / switches scenes itself.
+  final bool pedalScenes;
+
+  /// Scenes are handled by the pedal right now.
+  bool get pedalScenesActive => isHardwareConnected && pedalScenes;
 
   bool get canUndo => undoStack.isNotEmpty;
   bool get canRedo => redoStack.isNotEmpty;
@@ -73,6 +87,8 @@ class EditorState {
     bool? isConnectingHardware,
     bool? isSyncingPresets,
     String? hardwareStatus,
+    int? saveCount,
+    bool? pedalScenes,
   }) {
     return EditorState(
       preset: preset ?? this.preset,
@@ -96,6 +112,8 @@ class EditorState {
       isConnectingHardware: isConnectingHardware ?? this.isConnectingHardware,
       isSyncingPresets: isSyncingPresets ?? this.isSyncingPresets,
       hardwareStatus: hardwareStatus ?? this.hardwareStatus,
+      saveCount: saveCount ?? this.saveCount,
+      pedalScenes: pedalScenes ?? this.pedalScenes,
     );
   }
 }

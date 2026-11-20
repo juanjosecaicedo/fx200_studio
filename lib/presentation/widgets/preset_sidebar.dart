@@ -64,6 +64,83 @@ class PresetSidebar extends StatefulWidget {
 
 class _PresetSidebarState extends State<PresetSidebar> {
   String _query = '';
+  final ScrollController _scroll = ScrollController();
+
+  /// Presets shown by the last build (search filter applied).
+  List<int> _visible = const <int>[];
+
+  /// True once the list was positioned on the active preset after a sync
+  /// (reset when a new sync starts, e.g. on reconnect).
+  bool _positioned = false;
+
+  /// Bottom padding of the list (see [ReorderableListView.padding]).
+  static const double _listBottomPadding = 12;
+
+  @override
+  void initState() {
+    super.initState();
+    _maybePositionAfterSync();
+  }
+
+  @override
+  void didUpdateWidget(PresetSidebar old) {
+    super.didUpdateWidget(old);
+    if (widget.isSyncing) _positioned = false;
+    if (!_maybePositionAfterSync() &&
+        old.activePatchNumber != widget.activePatchNumber) {
+      // Preset changed from the pedal or the editor: only scroll if the
+      // row is out of view.
+      _scrollToActive(onlyIfHidden: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// When all the presets are loaded, scrolls once to the active preset.
+  bool _maybePositionAfterSync() {
+    if (_positioned || widget.isSyncing || widget.presetNames.isEmpty) {
+      return false;
+    }
+    _positioned = true;
+    _scrollToActive(onlyIfHidden: false);
+    return true;
+  }
+
+  /// Centres the active preset in the list (after the next layout). All
+  /// rows have the same height (prototypeItem), so the offset follows from
+  /// the scroll extent.
+  void _scrollToActive({required bool onlyIfHidden}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return;
+      final idx = _visible.indexOf(widget.activePatchNumber);
+      if (idx < 0 || _visible.isEmpty) return;
+      final pos = _scroll.position;
+      final viewport = pos.viewportDimension;
+      final rowExtent =
+          (pos.maxScrollExtent + viewport - _listBottomPadding) /
+          _visible.length;
+      if (rowExtent <= 0) return;
+      final rowTop = idx * rowExtent;
+      if (onlyIfHidden &&
+          rowTop >= pos.pixels &&
+          rowTop + rowExtent <= pos.pixels + viewport) {
+        return;
+      }
+      final target = (rowTop - (viewport - rowExtent) / 2).clamp(
+        pos.minScrollExtent,
+        pos.maxScrollExtent,
+      );
+      _scroll.animateTo(
+        target,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
 
   String _nameOf(int i) {
     final n = widget.presetNames[i];
@@ -285,6 +362,8 @@ class _PresetSidebarState extends State<PresetSidebar> {
         visibleIndices.add(i);
       }
     }
+    _visible = visibleIndices;
+    final canDrag = widget.canEditPresets && widget.onMovePreset != null;
 
     return Container(
       width: 230,
@@ -455,118 +534,130 @@ class _PresetSidebarState extends State<PresetSidebar> {
           const SizedBox(height: 8),
           Expanded(
             child: ReorderableListView.builder(
+              scrollController: _scroll,
               buildDefaultDragHandles: false,
-              padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, _listBottomPadding),
               itemCount: visibleIndices.length,
+              // All rows share this height; _scrollToActive relies on it.
+              prototypeItem: _presetRow(
+                context,
+                ext: ext,
+                accent: accent,
+                patchIndex: widget.activePatchNumber,
+                idx: 0,
+                canDrag: canDrag,
+                withKey: false,
+              ),
               // newIndex is already adjusted for the removed item.
               onReorderItem: (oldIndex, newIndex) {
                 if (newIndex == oldIndex) return;
                 _move(visibleIndices[oldIndex], visibleIndices[newIndex]);
               },
-              itemBuilder: (context, idx) {
-                final patchIndex = visibleIndices[idx];
-                final canDrag =
-                    widget.canEditPresets && widget.onMovePreset != null;
-                final isSelected = patchIndex == widget.activePatchNumber;
-                final hwName = widget.presetNames[patchIndex];
-                final displayName = (hwName != null && hwName.isNotEmpty)
-                    ? hwName
-                    : Fx200Models.defaultPresetName(patchIndex);
+              itemBuilder: (context, idx) => _presetRow(
+                context,
+                ext: ext,
+                accent: accent,
+                patchIndex: visibleIndices[idx],
+                idx: idx,
+                canDrag: canDrag,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-                return Padding(
-                  key: ValueKey<int>(patchIndex),
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: GestureDetector(
-                    onSecondaryTapDown: (d) =>
-                        _showContextMenu(d.globalPosition, patchIndex),
-                    child: InkWell(
-                      onTap: () => widget.onSelectPreset(patchIndex),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 7,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? accent.withValues(alpha: 0.16)
-                              : ext.blockSurface,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: isSelected ? accent : ext.subtleBorder,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 5,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? accent.withValues(alpha: 0.25)
-                                    : ext.panelSurface,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                patchIndex.toString().padLeft(3, '0'),
-                                style: Theme.of(context).textTheme.labelSmall
-                                    ?.copyWith(
-                                      color: isSelected
-                                          ? accent
-                                          : ext.textMuted,
-                                      fontSize: 10,
-                                    ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                displayName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(
-                                      color: isSelected
-                                          ? ext.textPrimary
-                                          : (hwName != null
-                                                ? ext.textPrimary
-                                                : ext.textMuted),
-                                      fontWeight: isSelected
-                                          ? FontWeight.w600
-                                          : FontWeight.w400,
-                                    ),
-                              ),
-                            ),
-                            if (canDrag)
-                              ReorderableDragStartListener(
-                                index: idx,
-                                child: MouseRegion(
-                                  cursor: SystemMouseCursors.grab,
-                                  child: Tooltip(
-                                    message: tr('Drag to move this preset'),
-                                    waitDuration: const Duration(
-                                      milliseconds: 600,
-                                    ),
-                                    child: Icon(
-                                      Icons.drag_indicator,
-                                      size: 16,
-                                      color: ext.textMuted,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
+  Widget _presetRow(
+    BuildContext context, {
+    required FxEditorThemeExtension ext,
+    required Color accent,
+    required int patchIndex,
+    required int idx,
+    required bool canDrag,
+    bool withKey = true,
+  }) {
+    final isSelected = patchIndex == widget.activePatchNumber;
+    final hwName = widget.presetNames[patchIndex];
+    final displayName = (hwName != null && hwName.isNotEmpty)
+        ? hwName
+        : Fx200Models.defaultPresetName(patchIndex);
+
+    return Padding(
+      key: withKey ? ValueKey<int>(patchIndex) : null,
+      padding: const EdgeInsets.only(bottom: 4),
+      child: GestureDetector(
+        onSecondaryTapDown: (d) =>
+            _showContextMenu(d.globalPosition, patchIndex),
+        child: InkWell(
+          onTap: () => widget.onSelectPreset(patchIndex),
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? accent.withValues(alpha: 0.16)
+                  : ext.blockSurface,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: isSelected ? accent : ext.subtleBorder),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? accent.withValues(alpha: 0.25)
+                        : ext.panelSurface,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    patchIndex.toString().padLeft(3, '0'),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: isSelected ? accent : ext.textMuted,
+                      fontSize: 10,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: isSelected
+                          ? ext.textPrimary
+                          : (hwName != null ? ext.textPrimary : ext.textMuted),
+                      fontWeight: isSelected
+                          ? FontWeight.w600
+                          : FontWeight.w400,
+                    ),
+                  ),
+                ),
+                if (canDrag)
+                  ReorderableDragStartListener(
+                    index: idx,
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.grab,
+                      child: Tooltip(
+                        message: tr('Drag to move this preset'),
+                        waitDuration: const Duration(milliseconds: 600),
+                        child: Icon(
+                          Icons.drag_indicator,
+                          size: 16,
+                          color: ext.textMuted,
                         ),
                       ),
                     ),
                   ),
-                );
-              },
+              ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }

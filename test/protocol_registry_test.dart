@@ -26,7 +26,8 @@ void main() {
   group('registry gate', () {
     test('every command the app writes is allowed', () {
       for (final op in <int>[
-        0x83, 0xa0, 0xa1, 0xa3, 0xa4, 0xa6, 0xa8, 0xaa, 0xad, 0xae, 0xe0, //
+        0x83, 0x84, 0xa0, 0xa1, 0xa3, 0xa4, 0xa6, 0xa8, 0xaa, 0xad, 0xae, //
+        0xe0,
         0xe1, 0xe4, ...fx200PresetStateOpcodes,
       ]) {
         expect(() => fx200CheckSendable(op), returnsNormally, reason: '$op');
@@ -42,7 +43,7 @@ void main() {
     test(
       'undocumented, unknown, forbidden or pedal-only commands are blocked',
       () {
-        for (final op in <int>[0x82, 0xab, 0xac, 0x85, 0xa5, 0x77]) {
+        for (final op in <int>[0x82, 0xab, 0xac, 0x85, 0xa5, 0x10, 0x77]) {
           expect(
             () => fx200CheckSendable(op),
             throwsA(isA<Fx200ForbiddenCommand>()),

@@ -166,6 +166,11 @@ class Fx200Protocol {
     return buildHidPacket(payload: payload);
   }
 
+  /// Builds the `0x84` device-info request (`FX200.exe` sub_402520 sends the
+  /// same payload); the pedal answers `0x10 [0x84, 16-byte device string]`.
+  static Uint8List buildHandshakePacket() =>
+      buildHidPacket(payload: const <int>[opHandshake, 0x00, 0x00]);
+
   /// Builds a `0xA6` preset-read HID packet for `presetIndex` (`0..199`).
   static Uint8List buildPresetReadPacket(int presetIndex) {
     final clamped = presetIndex.clamp(0, Fx200Constants.presetPatchCount - 1);

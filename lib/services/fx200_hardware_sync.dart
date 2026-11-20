@@ -7,6 +7,7 @@ import '../domain/entities/preset.dart';
 import '../core/l10n/l10n.dart';
 import 'fx200_backup.dart';
 import 'fx200_ir.dart';
+import 'fx200_firmware_features.dart';
 import 'fx200_opcodes.dart';
 import 'fx200_protocol.dart';
 import 'usb_transport.dart';
@@ -123,6 +124,12 @@ class Fx200HardwareSync implements Fx200DeviceLink {
     _irNamesBody = body;
   }
 
+  /// Firmware capabilities from the `0x84` handshake; null until the pedal
+  /// answers [requestDeviceInfo] (or sends its spontaneous `0x84`).
+  Fx200FirmwareFeatures? get firmwareFeatures => _firmwareFeatures;
+  Fx200FirmwareFeatures? _firmwareFeatures;
+  void Function(Fx200FirmwareFeatures features)? _onFirmwareFeatures;
+
   /// Last `0xAD` drum machine state received from (or sent to) the pedal.
   Fx200DrumSettings? get lastDrum => _lastDrum;
 
@@ -194,7 +201,9 @@ class Fx200HardwareSync implements Fx200DeviceLink {
     onChainOrderReceived,
     void Function(double bpm)? onBpmReceived,
     void Function()? onPresetSyncComplete,
+    void Function(Fx200FirmwareFeatures features)? onFirmwareFeatures,
   }) async {
+    _onFirmwareFeatures = onFirmwareFeatures;
     if (_connected) {
       return (ok: true, message: 'FX200 LIVE (IF 3)');
     }
@@ -296,6 +305,12 @@ class Fx200HardwareSync implements Fx200DeviceLink {
       _activePatch = body[0] & 0xff;
     }
 
+    final features = Fx200FirmwareFeatures.fromFrame(opcode, body);
+    if (features != null) {
+      _firmwareFeatures = features;
+      _onFirmwareFeatures?.call(features);
+    }
+
     if (opcode == Fx200Ir.opNames) {
       _irNames = Fx200Ir.decodeNames(body);
       _irNamesBody = Uint8List.fromList(body);
@@ -365,6 +380,14 @@ class Fx200HardwareSync implements Fx200DeviceLink {
         onActivePatchReceived(patch);
       }
     }
+  }
+
+  /// Asks for the device string (`0x84`, answered with `0x10`): tells a
+  /// stock firmware from the custom scenes firmware. Read-only on the pedal
+  /// (U102 handler 0x4528 only answers).
+  void requestDeviceInfo() {
+    if (!_connected) return;
+    _tx(Fx200Protocol.buildHandshakePacket());
   }
 
   void requestPresetList() {
@@ -649,7 +672,12 @@ class Fx200HardwareSync implements Fx200DeviceLink {
   /// Every packet to the pedal goes through here: [fx200CheckSendable]
   /// refuses commands that are undocumented, unknown or forbidden.
   void _tx(Uint8List packet) {
-    if (packet.length > 5) fx200CheckSendable(packet[5]);
+    if (packet.length > 5) {
+      fx200CheckSendable(
+        packet[5],
+        customFirmware: _firmwareFeatures?.hasPedalSceneCommand ?? false,
+      );
+    }
     _txPort?.send(packet);
   }
 
@@ -657,6 +685,7 @@ class Fx200HardwareSync implements Fx200DeviceLink {
 
   void disconnect() {
     _connected = false;
+    _firmwareFeatures = null;
     _finishDump();
     _txPortClose();
     _txPort = null;

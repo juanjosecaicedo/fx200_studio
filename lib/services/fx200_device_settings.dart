@@ -17,7 +17,7 @@ import 'dart:typed_data';
 /// | 5    | USB PLAY VOL (0..100)                             |
 /// | 6, 7 | GLOBAL CAB left / right (0/1)                     |
 /// | 8    | CAB SYNC (0/1)                                    |
-/// | 11   | FS MODE (0 NORMAL, 1 FAVORITE, 2 DUAL)            |
+/// | 11   | FS MODE (0 NORMAL, 1 FAVORITE, 2 DUAL; 3 SCENE on the custom firmware) |
 /// | 16   | INPUT LEVEL, stored dB + 1 (official editor: 0..20 dB) |
 /// | 18   | BRIGHTNESS (0..100)                               |
 /// | 21   | LOOPER POSITION (0 PRE, 1 POST)                   |
@@ -45,6 +45,10 @@ class Fx200GlobalSettings {
   static const int fsModeNormal = 0;
   static const int fsModeFavorite = 1;
   static const int fsModeDual = 2;
+
+  /// Footswitches select scenes 1-4 (custom scenes firmware only; the
+  /// stock firmware treats 3 like NORMAL).
+  static const int fsModeScene = 3;
 
   static const int midiChannelOmni = 16;
 
@@ -112,8 +116,10 @@ class Fx200GlobalSettings {
   Fx200GlobalSettings withGlobalCabLeft(bool v) => _with({6: v ? 1 : 0});
   Fx200GlobalSettings withGlobalCabRight(bool v) => _with({7: v ? 1 : 0});
   Fx200GlobalSettings withCabSync(bool v) => _with({8: v ? 1 : 0});
-  Fx200GlobalSettings withFsMode(int v) =>
-      _with({11: v.clamp(fsModeNormal, fsModeDual)});
+
+  /// [allowScene]: only when the pedal runs the custom scenes firmware.
+  Fx200GlobalSettings withFsMode(int v, {bool allowScene = false}) =>
+      _with({11: v.clamp(fsModeNormal, allowScene ? fsModeScene : fsModeDual)});
   Fx200GlobalSettings withBrightness(int v) => _with({18: v.clamp(0, 100)});
   Fx200GlobalSettings withInputLevelDb(int db) =>
       _with({16: db.clamp(0, 20) + 1});

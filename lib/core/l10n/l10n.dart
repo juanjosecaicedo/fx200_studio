@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../app_dirs.dart';
 import 'strings_es.dart';
 
 /// Display languages (Software Guide p. 4: "Language: select display
@@ -35,17 +36,11 @@ final languageProvider = NotifierProvider<LanguageNotifier, AppLanguage>(
   LanguageNotifier.new,
 );
 
-/// Remembers the chosen language in `~/.config/fx200_studio/settings.json`
+/// Remembers the chosen language in `settings.json` in the per-user app folder
 /// (defaults to the system language).
 class LanguageNotifier extends Notifier<AppLanguage> {
   static File? get _file {
-    final home =
-        Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
-    if (home == null) return null;
-    return File(
-      '$home${Platform.pathSeparator}.config${Platform.pathSeparator}'
-      'fx200_studio${Platform.pathSeparator}settings.json',
-    );
+    return fx200SettingsFile('settings.json');
   }
 
   @override

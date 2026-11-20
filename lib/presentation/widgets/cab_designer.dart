@@ -250,6 +250,10 @@ class _RoomViewState extends State<_RoomView> {
           if (_dragStartY != null && _live != null) _set(_live!, commit: true);
           _dragStartY = null;
         },
+        onPointerCancel: (_) {
+          if (_dragStartY != null && _live != null) _set(_live!, commit: true);
+          _dragStartY = null;
+        },
         onPointerSignal: (e) {
           if (e is PointerScrollEvent) {
             _set(_value - e.scrollDelta.dy.sign * 2, commit: true);
@@ -479,6 +483,10 @@ class _ResponseViewState extends State<_ResponseView> {
         onPointerDown: (e) => setState(() => _dragging = _hit(e.localPosition)),
         onPointerMove: (e) => _move(e.localPosition.dx, commit: false),
         onPointerUp: (e) {
+          _move(e.localPosition.dx, commit: true);
+          setState(() => _dragging = null);
+        },
+        onPointerCancel: (e) {
           _move(e.localPosition.dx, commit: true);
           setState(() => _dragging = null);
         },

@@ -103,13 +103,6 @@ class ParameterPanel extends StatelessWidget {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  ModelArtView(
-                    category: current.category,
-                    modelName: current.modelName,
-                    width: 76,
-                    height: 46,
-                  ),
-                  const SizedBox(width: 8),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -169,127 +162,205 @@ class ParameterPanel extends StatelessWidget {
             ],
           ),
           Divider(height: 20, color: ext.subtleBorder),
-          if (eqLayout != null) ...[
-            ParametricEqGraph(
-              key: ValueKey<String>('${current.id}_${current.modelName}'),
-              blockId: current.id,
-              bands: eqLayout.bands,
-              extraKnobs: eqLayout.knobs,
-              accent: accent,
-              onParameterChanged: onParameterChanged,
-            ),
-          ] else if (CompressorDesigner.supports(current)) ...[
-            CompressorDesigner(
-              block: current,
-              accent: accent,
-              onParameterChanged: onParameterChanged,
-            ),
-          ] else if (CabDesigner.supports(current)) ...[
-            CabDesigner(
-              block: current,
-              accent: accent,
-              onParameterChanged: onParameterChanged,
-            ),
-          ] else if (knobs.isNotEmpty)
-            Wrap(
-              spacing: 20,
-              runSpacing: 14,
-              children: [
-                for (final param in knobs)
-                  RotaryKnob(
-                    key: ValueKey<String>('${current.id}_${param.id}'),
-                    label: param.label,
-                    value: param.value,
-                    defaultValue: param.defaultValue,
-                    min: param.min,
-                    max: param.max,
-                    unit: param.unit,
-                    formatter: param.textOf,
-                    parser: param.rawFromText,
-                    accentColor: accent,
-                    onChanged: (v) =>
-                        onParameterChanged(param.id, v, recordHistory: false),
-                    onChangeEnd: (v) =>
-                        onParameterChanged(param.id, v, recordHistory: true),
-                  ),
-              ],
-            ),
-          if (lists.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 12,
-              runSpacing: 8,
-              children: [
-                for (final param in lists)
-                  _CompactDropdown(
-                    key: ValueKey<String>('${current.id}_${param.id}'),
-                    label: param.label,
-                    showLabel: true,
-                    value: param.displayText,
-                    items: param.options,
-                    ext: ext,
-                    onChanged: (opt) => onParameterChanged(
-                      param.id,
-                      param.options.indexOf(opt).toDouble(),
-                      recordHistory: true,
-                    ),
-                  ),
-              ],
-            ),
-          ],
-          if (sliders.isNotEmpty) ...[
-            if (knobs.isNotEmpty) const SizedBox(height: 12),
-            for (final param in sliders)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 84,
-                      child: Text(
-                        param.label,
-                        style: Theme.of(context).textTheme.labelSmall,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final art = _ModelArtFrame(
+                category: current.category,
+                modelName: current.modelName,
+                accent: accent,
+                enabled: current.enabled,
+              );
+              final controls = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (eqLayout != null) ...[
+                    ParametricEqGraph(
+                      key: ValueKey<String>(
+                        '${current.id}_${current.modelName}',
                       ),
+                      blockId: current.id,
+                      bands: eqLayout.bands,
+                      extraKnobs: eqLayout.knobs,
+                      accent: accent,
+                      onParameterChanged: onParameterChanged,
                     ),
-                    Expanded(
-                      child: SliderTheme(
-                        data: SliderTheme.of(context).copyWith(
-                          activeTrackColor: accent,
-                          inactiveTrackColor: ext.subtleBorder,
-                          thumbColor: accent,
-                          trackHeight: 3,
-                        ),
-                        child: Slider(
-                          value: param.value.clamp(param.min, param.max),
-                          min: param.min,
-                          max: param.max,
-                          onChanged: (v) => onParameterChanged(
-                            param.id,
-                            v,
-                            recordHistory: false,
+                  ] else if (CompressorDesigner.supports(current)) ...[
+                    CompressorDesigner(
+                      block: current,
+                      accent: accent,
+                      onParameterChanged: onParameterChanged,
+                    ),
+                  ] else if (CabDesigner.supports(current)) ...[
+                    CabDesigner(
+                      block: current,
+                      accent: accent,
+                      onParameterChanged: onParameterChanged,
+                    ),
+                  ] else if (knobs.isNotEmpty)
+                    Wrap(
+                      spacing: 20,
+                      runSpacing: 14,
+                      children: [
+                        for (final param in knobs)
+                          RotaryKnob(
+                            key: ValueKey<String>('${current.id}_${param.id}'),
+                            label: param.label,
+                            value: param.value,
+                            defaultValue: param.defaultValue,
+                            min: param.min,
+                            max: param.max,
+                            unit: param.unit,
+                            formatter: param.textOf,
+                            parser: param.rawFromText,
+                            accentColor: accent,
+                            onChanged: (v) => onParameterChanged(
+                              param.id,
+                              v,
+                              recordHistory: false,
+                            ),
+                            onChangeEnd: (v) => onParameterChanged(
+                              param.id,
+                              v,
+                              recordHistory: true,
+                            ),
                           ),
-                          onChangeEnd: (v) => onParameterChanged(
-                            param.id,
-                            v,
-                            recordHistory: true,
-                          ),
-                        ),
-                      ),
+                      ],
                     ),
-                    SizedBox(
-                      width: 72,
-                      child: Text(
-                        param.displayText,
-                        textAlign: TextAlign.right,
-                        style: Theme.of(context).textTheme.bodySmall
-                            ?.copyWith(color: ext.textPrimary),
-                      ),
+                  if (lists.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 8,
+                      children: [
+                        for (final param in lists)
+                          _CompactDropdown(
+                            key: ValueKey<String>('${current.id}_${param.id}'),
+                            label: param.label,
+                            showLabel: true,
+                            value: param.displayText,
+                            items: param.options,
+                            ext: ext,
+                            onChanged: (opt) => onParameterChanged(
+                              param.id,
+                              param.options.indexOf(opt).toDouble(),
+                              recordHistory: true,
+                            ),
+                          ),
+                      ],
                     ),
                   ],
-                ),
-              ),
-          ],
+                  if (sliders.isNotEmpty) ...[
+                    if (knobs.isNotEmpty) const SizedBox(height: 12),
+                    for (final param in sliders)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 84,
+                              child: Text(
+                                param.label,
+                                style: Theme.of(context).textTheme.labelSmall,
+                              ),
+                            ),
+                            Expanded(
+                              child: SliderTheme(
+                                data: SliderTheme.of(context).copyWith(
+                                  activeTrackColor: accent,
+                                  inactiveTrackColor: ext.subtleBorder,
+                                  thumbColor: accent,
+                                  trackHeight: 3,
+                                ),
+                                child: Slider(
+                                  value: param.value.clamp(
+                                    param.min,
+                                    param.max,
+                                  ),
+                                  min: param.min,
+                                  max: param.max,
+                                  onChanged: (v) => onParameterChanged(
+                                    param.id,
+                                    v,
+                                    recordHistory: false,
+                                  ),
+                                  onChangeEnd: (v) => onParameterChanged(
+                                    param.id,
+                                    v,
+                                    recordHistory: true,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            SizedBox(
+                              width: 72,
+                              child: Text(
+                                param.displayText,
+                                textAlign: TextAlign.right,
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(color: ext.textPrimary),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ],
+              );
+              // Narrow panel: picture above the controls.
+              if (constraints.maxWidth < 560) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [art, const SizedBox(height: 14), controls],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  art,
+                  const SizedBox(width: 20),
+                  Expanded(child: controls),
+                ],
+              );
+            },
+          ),
         ],
+      ),
+    );
+  }
+}
+
+/// Large picture of the model being edited, top-aligned with the controls.
+class _ModelArtFrame extends StatelessWidget {
+  const _ModelArtFrame({
+    required this.category,
+    required this.modelName,
+    required this.accent,
+    required this.enabled,
+  });
+
+  final EffectCategory category;
+  final String modelName;
+  final Color accent;
+  final bool enabled;
+
+  static const double size = 168;
+
+  @override
+  Widget build(BuildContext context) {
+    final ext = Theme.of(context).extension<FxEditorThemeExtension>()!;
+    return AnimatedOpacity(
+      duration: ext.transitionDuration,
+      opacity: enabled ? 1.0 : 0.55,
+      child: Container(
+        width: size,
+        height: size,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: ext.chassisBackground,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: accent.withValues(alpha: 0.35)),
+        ),
+        child: ModelArtView(category: category, modelName: modelName),
       ),
     );
   }

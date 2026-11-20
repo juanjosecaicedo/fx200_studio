@@ -5,9 +5,12 @@ import 'package:material_ui/material_ui.dart';
 import '../../core/theme/editor_theme.dart';
 import '../../domain/entities/preset.dart';
 import '../../ui/home_page.dart';
+import '../state/device_settings_notifier.dart';
 import '../state/editor_notifier.dart';
 import '../state/ir_notifier.dart';
+import '../state/pedal_scenes_notifier.dart';
 import '../state/scenes_notifier.dart';
+import '../widgets/pedal_scenes_dialog.dart';
 import '../state/preset_ops_notifier.dart';
 import '../widgets/backup_dialog.dart';
 import '../widgets/editor_bottom_bar.dart';
@@ -182,6 +185,18 @@ class _EditorPageState extends ConsumerState<EditorPage> {
     final clip = ops.clipboard;
     final scenes = ref.watch(scenesProvider);
     final scenesNotifier = ref.read(scenesProvider.notifier);
+    // With the custom firmware in FS MODE SCENE the pedal stores and
+    // switches scenes itself: the app-side scenes would fight with it.
+    final pedalSceneMode = pedalSceneModeFor(
+      state,
+      ref.watch(deviceSettingsProvider.select((d) => d.global?.fsMode)),
+    );
+    // Firmware v2 (USB command 0xF5): the scene buttons drive the pedal's
+    // scenes. With v1 they stay disabled (footswitches only).
+    final pedalScenes = ref.watch(pedalScenesProvider);
+    final pedalScenesNotifier = ref.read(pedalScenesProvider.notifier);
+    final pedalDriven = pedalSceneMode && pedalScenes.available;
+    final pedalActive = pedalScenes.active;
     // Rebuild when the user IR names change (CAB model labels).
     ref.watch(irProvider);
     final irNotifier = ref.read(irProvider.notifier);
@@ -213,12 +228,36 @@ class _EditorPageState extends ConsumerState<EditorPage> {
             isBrowserOpen: state.isBrowserOpen,
             onSelectPatch: _selectPreset,
             onRenamePreset: notifier.renamePreset,
-            onSelectScene: scenesNotifier.select,
-            onSaveScene: scenesNotifier.save,
-            onClearScene: scenesNotifier.clear,
-            activeScene: scenes.active,
-            filledScenes: scenes.scenes.keys.toSet(),
-            activeSceneModified: scenes.activeModified,
+            onSelectScene: pedalDriven
+                ? (scene) =>
+                      pedalScenesNotifier.select(kSceneNames.indexOf(scene))
+                : (pedalSceneMode ? null : scenesNotifier.select),
+            onSaveScene: pedalDriven
+                ? (scene) => pedalScenesNotifier.storeCurrentIn(
+                    kSceneNames.indexOf(scene),
+                  )
+                : (pedalSceneMode ? null : scenesNotifier.save),
+            onClearScene: pedalSceneMode ? null : scenesNotifier.clear,
+            onCompareScenes: pedalDriven
+                ? () => showPedalScenesDialog(context)
+                : null,
+            scenesTooltip: pedalDriven
+                ? tr(
+                    'Pedal scenes: click to play a scene on the pedal (like its footswitches). Edits go to the scene being played and are stored on the pedal with Save. Right-click to copy the sound or compare the scenes',
+                  )
+                : null,
+            scenesDisabledReason: pedalSceneMode
+                ? tr(
+                    'Scenes are handled by the pedal (FS MODE SCENE): use its footswitches. Save stores them on the pedal.',
+                  )
+                : null,
+            activeScene: pedalDriven
+                ? (pedalActive == null ? null : kSceneNames[pedalActive])
+                : scenes.active,
+            filledScenes: pedalDriven
+                ? kSceneNames.toSet()
+                : scenes.scenes.keys.toSet(),
+            activeSceneModified: !pedalDriven && scenes.activeModified,
             onUndo: notifier.undo,
             onRedo: notifier.redo,
             onSave: _saveAll,

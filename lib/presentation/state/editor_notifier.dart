@@ -184,6 +184,8 @@ class EditorNotifier extends Notifier<EditorState> {
     final sync = ref.read(fx200HardwareSyncProvider);
     if (sync.isConnected || state.isConnectingHardware) return;
 
+    // A new connection may be another pedal / firmware.
+    state = state.copyWith(pedalScenes: false);
     if (!silentOnFail) {
       state = state.copyWith(
         isConnectingHardware: true,
@@ -244,6 +246,11 @@ class EditorNotifier extends Notifier<EditorState> {
         }
       },
       onChainOrderReceived: _applyHardwareChainOrder,
+      onFirmwareFeatures: (features) {
+        if (state.pedalScenes != features.hasPedalScenes) {
+          state = state.copyWith(pedalScenes: features.hasPedalScenes);
+        }
+      },
       onBpmReceived: (bpm) {
         final current = state.preset;
         if (current != null) {
@@ -268,6 +275,8 @@ class EditorNotifier extends Notifier<EditorState> {
       // to whatever the app opened locally (patch 0 = 01A), and because the
       // pedal queues it behind the ~27 s dump it lands late, overriding
       // footswitch changes made in the meantime.
+      // Read-only: tells the stock firmware from the scenes firmware.
+      sync.requestDeviceInfo();
       sync.requestPresetList();
     } else {
       state = state.copyWith(
@@ -377,6 +386,7 @@ class EditorNotifier extends Notifier<EditorState> {
       preset: toSave,
       hasUnsavedChanges: false,
       presetNames: Map<int, String>.unmodifiable(_hardwarePresetNames),
+      saveCount: state.saveCount + 1,
     );
   }
 
@@ -556,8 +566,8 @@ class EditorNotifier extends Notifier<EditorState> {
     _commitPreset(current.copyWith(name: capped), recordHistory: false);
   }
 
-  /// Applies [scene] to the active preset (one undo step) and sends only the
-  /// modules that change to the pedal. App-side scenes: the chain order and
+  /// Applies [scene] to the active preset and sends only the modules that
+  /// change to the pedal. App-side scenes: the chain order and
   /// the per-preset controls stay as they are.
   void applyScene(String name, Scene scene) {
     final current = state.preset;
@@ -582,8 +592,21 @@ class EditorNotifier extends Notifier<EditorState> {
       );
     }).toList();
     final next = current.copyWith(blocks: blocks, activeScene: name);
-    _commitPreset(next);
+    // Switching scene is not an edit: edits made in the previous scene stay
+    // in that scene, so its undo history must not leak into this one.
+    state = state.copyWith(
+      preset: next,
+      undoStack: const <Preset>[],
+      redoStack: const <Preset>[],
+    );
     _syncHardwareTo(current, next);
+  }
+
+  /// The preset changed outside the editor's model (e.g. a pedal scene was
+  /// rewritten over USB): only flags it as unsaved, so Save stores it.
+  void markEdited() {
+    if (state.preset == null || state.hasUnsavedChanges) return;
+    state = state.copyWith(hasUnsavedChanges: true);
   }
 
   void selectScene(String scene) {
