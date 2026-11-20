@@ -6,6 +6,7 @@ import 'package:ffi/ffi.dart';
 
 import '../core/fx200_constants.dart';
 import 'fx200_protocol.dart';
+import 'hidapi_session.dart';
 
 /// Descriptor of a discovered USB device matching the FX200 Vendor ID.
 class Fx200UsbDevice {
@@ -219,6 +220,7 @@ class Fx200UsbTransport {
 
   /// Scans USB buses for devices matching FX200 Vendor IDs (`0x0483`, `0x34db`).
   UsbScanResult scanForFx200() {
+    if (!Platform.isLinux) return HidapiBackend.scan();
     final lib = _tryOpenLibusb();
     if (lib == null) {
       return const UsbScanResult(
@@ -788,6 +790,13 @@ class Fx200UsbTransport {
     int endpointOut = Fx200Constants.hidEndpointOut,
     int endpointIn = Fx200Constants.hidEndpointIn,
   }) {
+    if (!Platform.isLinux) {
+      return HidapiBackend.open(
+        vendorId: vendorId,
+        productId: productId,
+        interfaceNumber: interfaceNumber,
+      );
+    }
     final lib = _tryOpenLibusb();
     if (lib == null) {
       return (
@@ -932,7 +941,7 @@ class Fx200UsbTransport {
       }
 
       return (
-        session: Fx200HidSession._(
+        session: _LibusbHidSession(
           ctx: ctx,
           handle: handle,
           detachedKernelDriver: detached,
@@ -956,9 +965,23 @@ class Fx200UsbTransport {
   }
 }
 
-/// Persistent USB HID session keeping Interface 3 claimed for live I/O.
-class Fx200HidSession {
-  Fx200HidSession._({
+/// Persistent HID session (live I/O with the pedal). Linux uses libusb
+/// ([_LibusbHidSession]); Windows/macOS use hidapi (`hidapi_session.dart`).
+abstract class Fx200HidSession {
+  bool get isOpen;
+
+  /// Writes a raw frame (split into 64-byte reports). Returns 0 on success.
+  int sendRaw(List<int> rawFrame, {int timeoutMs = 100});
+
+  /// Polls the IN endpoint once. `rc == -7` means timeout.
+  ({int rc, Uint8List? data}) pollIn({int timeoutMs = 10});
+
+  void close();
+}
+
+/// libusb session keeping the HID interface claimed (Linux).
+class _LibusbHidSession implements Fx200HidSession {
+  _LibusbHidSession({
     required this._ctx,
     required this._handle,
     required this._detachedKernelDriver,
@@ -992,9 +1015,11 @@ class Fx200HidSession {
   final Pointer<Int32> _actualLenPtr;
   bool _closed = false;
 
+  @override
   bool get isOpen => !_closed;
 
   /// Writes a raw frame (split into 64-byte chunks) to `EP 0x05 OUT`.
+  @override
   int sendRaw(List<int> rawFrame, {int timeoutMs = 100}) {
     if (_closed) return -1;
     final frame = Uint8List.fromList(rawFrame);
@@ -1018,6 +1043,7 @@ class Fx200HidSession {
   }
 
   /// Polls `EP 0x84 IN` once. Returns `null` on timeout (`-7`), or the received bytes.
+  @override
   ({int rc, Uint8List? data}) pollIn({int timeoutMs = 10}) {
     if (_closed) return (rc: -1, data: null);
     _actualLenPtr.value = 0;
@@ -1040,6 +1066,7 @@ class Fx200HidSession {
     return (rc: rc, data: null);
   }
 
+  @override
   void close() {
     if (_closed) return;
     _closed = true;

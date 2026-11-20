@@ -58,6 +58,18 @@ add_subdirectory("runner")
 include(flutter/generated_plugins.cmake)
 
 
+# hidapi: Windows owns the pedal's HID interface, so the app talks to it through
+# hidapi (no driver swap / Zadig needed). Built from source and shipped next to
+# the executable as hidapi.dll (loaded by lib/services/hidapi_session.dart).
+include(FetchContent)
+set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+set(HIDAPI_WITH_TESTS OFF CACHE BOOL "" FORCE)
+set(HIDAPI_INSTALL_TARGETS OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(hidapi
+  GIT_REPOSITORY https://github.com/libusb/hidapi.git
+  GIT_TAG hidapi-0.14.0)
+FetchContent_MakeAvailable(hidapi)
+
 # === Installation ===
 # Support files are copied into place next to the executable, so that it can
 # run in place. This is done instead of making a separate bundle (as on Linux)
@@ -79,6 +91,11 @@ install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}
   COMPONENT Runtime)
 
 install(FILES "${FLUTTER_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+  COMPONENT Runtime)
+
+install(FILES "$<TARGET_FILE:hidapi_winapi>"
+  DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+  RENAME "hidapi.dll"
   COMPONENT Runtime)
 
 if(PLUGIN_BUNDLED_LIBRARIES)
