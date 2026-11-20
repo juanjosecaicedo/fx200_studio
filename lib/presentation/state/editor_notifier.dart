@@ -8,6 +8,7 @@ import '../../core/fx200_models.dart';
 import '../../data/datasources/preset_remote_datasource.dart';
 import '../../data/repositories/preset_repository_impl.dart';
 import '../../domain/entities/preset.dart';
+import '../../domain/entities/scene.dart';
 import '../../domain/repositories/preset_repository.dart';
 import '../../domain/usecases/preset_usecases.dart';
 import '../../services/fx200_hardware_sync.dart';
@@ -553,6 +554,36 @@ class EditorNotifier extends Notifier<EditorState> {
     if (current == null) return;
     final capped = name.length > 15 ? name.substring(0, 15) : name;
     _commitPreset(current.copyWith(name: capped), recordHistory: false);
+  }
+
+  /// Applies [scene] to the active preset (one undo step) and sends only the
+  /// modules that change to the pedal. App-side scenes: the chain order and
+  /// the per-preset controls stay as they are.
+  void applyScene(String name, Scene scene) {
+    final current = state.preset;
+    if (current == null || !kSceneNames.contains(name)) return;
+    final blocks = current.blocks.map((b) {
+      final s = scene.blocks[b.category];
+      if (s == null) return b;
+      final template = s.modelName == b.modelName
+          ? b.parameters
+          : (Fx200Models.parametersForModel(b.category, s.modelName) ??
+                b.parameters);
+      final params = <BlockParameter>[
+        for (var i = 0; i < template.length; i++)
+          i < s.values.length
+              ? template[i].copyWith(value: s.values[i])
+              : template[i],
+      ];
+      return b.copyWith(
+        enabled: s.enabled,
+        modelName: s.modelName,
+        parameters: params,
+      );
+    }).toList();
+    final next = current.copyWith(blocks: blocks, activeScene: name);
+    _commitPreset(next);
+    _syncHardwareTo(current, next);
   }
 
   void selectScene(String scene) {

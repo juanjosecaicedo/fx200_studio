@@ -17,6 +17,11 @@ class EditorTopBar extends StatefulWidget {
     required this.onSelectPatch,
     required this.onRenamePreset,
     this.onSelectScene,
+    this.onSaveScene,
+    this.onClearScene,
+    this.activeScene,
+    this.filledScenes = const <String>{},
+    this.activeSceneModified = false,
     required this.onUndo,
     required this.onRedo,
     required this.onSave,
@@ -46,6 +51,14 @@ class EditorTopBar extends StatefulWidget {
   /// Scene mode (4 scenes, A-D) needs the custom firmware; until then this is
   /// null and the scene buttons render disabled.
   final ValueChanged<String>? onSelectScene;
+  final ValueChanged<String>? onSaveScene;
+  final ValueChanged<String>? onClearScene;
+
+  /// Scene currently applied (null = none), scenes holding a sound, and
+  /// whether the sound changed since the active scene was applied / saved.
+  final String? activeScene;
+  final Set<String> filledScenes;
+  final bool activeSceneModified;
   final VoidCallback onUndo;
   final VoidCallback onRedo;
   final VoidCallback onSave;
@@ -99,7 +112,28 @@ class _EditorTopBarState extends State<EditorTopBar> {
 
   /// Highlighted only while scene mode is available.
   bool _sceneActive(String scene) =>
-      widget.onSelectScene != null && widget.preset.activeScene == scene;
+      widget.onSelectScene != null && widget.activeScene == scene;
+
+  Future<void> _sceneMenu(String scene, Offset at) async {
+    final filled = widget.filledScenes.contains(scene);
+    final choice = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(at.dx, at.dy, at.dx, at.dy),
+      items: [
+        PopupMenuItem<String>(
+          value: 'save',
+          child: Text(tr('Save the current sound in scene {0}', [scene])),
+        ),
+        PopupMenuItem<String>(
+          value: 'clear',
+          enabled: filled,
+          child: Text(tr('Clear scene {0}', [scene])),
+        ),
+      ],
+    );
+    if (choice == 'save') widget.onSaveScene?.call(scene);
+    if (choice == 'clear') widget.onClearScene?.call(scene);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -212,13 +246,15 @@ class _EditorTopBarState extends State<EditorTopBar> {
               ),
             ),
 
-          // Scenes A-D: placeholder for the planned scene mode. The stock
-          // FX200 firmware has no scenes, so the buttons stay disabled until
-          // [onSelectScene] is wired to a firmware that supports them.
+          // Scenes A-D. App-side for now (stored on this computer, applied
+          // through the module frames); a custom firmware will store them on
+          // the pedal. Disabled while [onSelectScene] is null.
           Tooltip(
             message: widget.onSelectScene == null
                 ? tr('Scenes: not supported by the current FX200 firmware')
-                : 'Scenes',
+                : tr(
+                    'Scenes: click to apply (empty = store the current sound), right-click to save or clear',
+                  ),
             child: Opacity(
               opacity: widget.onSelectScene == null ? 0.45 : 1.0,
               child: Row(
@@ -227,35 +263,23 @@ class _EditorTopBarState extends State<EditorTopBar> {
                   for (final scene in kSceneNames)
                     Padding(
                       padding: const EdgeInsets.only(right: 4),
-                      child: InkWell(
-                        onTap: widget.onSelectScene == null
+                      child: GestureDetector(
+                        onSecondaryTapUp: widget.onSelectScene == null
                             ? null
-                            : () => widget.onSelectScene!(scene),
-                        borderRadius: BorderRadius.circular(6),
-                        child: AnimatedContainer(
-                          duration: ext.transitionDuration,
-                          width: 26,
-                          height: 26,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: _sceneActive(scene)
-                                ? delayColor.withValues(alpha: 0.24)
-                                : ext.blockSurface,
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(
-                              color: _sceneActive(scene)
-                                  ? delayColor
-                                  : ext.subtleBorder,
-                            ),
-                          ),
-                          child: Text(
-                            scene,
-                            style: Theme.of(context).textTheme.labelSmall
-                                ?.copyWith(
-                                  color: _sceneActive(scene)
-                                      ? ext.textPrimary
-                                      : ext.textMuted,
-                                ),
+                            : (d) => _sceneMenu(scene, d.globalPosition),
+                        child: InkWell(
+                          onTap: widget.onSelectScene == null
+                              ? null
+                              : () => widget.onSelectScene!(scene),
+                          borderRadius: BorderRadius.circular(6),
+                          child: _SceneChip(
+                            scene: scene,
+                            active: _sceneActive(scene),
+                            filled: widget.filledScenes.contains(scene),
+                            modified:
+                                _sceneActive(scene) &&
+                                widget.activeSceneModified,
+                            accent: delayColor,
                           ),
                         ),
                       ),
@@ -380,6 +404,72 @@ class _EditorTopBarState extends State<EditorTopBar> {
               tooltip: tr('Firmware update'),
               onPressed: widget.onOpenFirmware,
               icon: const Icon(Icons.system_update_alt, size: 18),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One scene button: highlighted when active, a small bar when it holds a
+/// sound, a dot when the sound was edited after applying it.
+class _SceneChip extends StatelessWidget {
+  const _SceneChip({
+    required this.scene,
+    required this.active,
+    required this.filled,
+    required this.modified,
+    required this.accent,
+  });
+
+  final String scene;
+  final bool active;
+  final bool filled;
+  final bool modified;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final ext = Theme.of(context).extension<FxEditorThemeExtension>()!;
+    return AnimatedContainer(
+      duration: ext.transitionDuration,
+      width: 26,
+      height: 26,
+      decoration: BoxDecoration(
+        color: active ? accent.withValues(alpha: 0.24) : ext.blockSurface,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: active ? accent : ext.subtleBorder),
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Text(
+            scene,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: active || filled ? ext.textPrimary : ext.textMuted,
+            ),
+          ),
+          if (filled)
+            Positioned(
+              bottom: 3,
+              child: Container(
+                width: 10,
+                height: 2,
+                color: accent.withValues(alpha: active ? 1 : 0.6),
+              ),
+            ),
+          if (modified)
+            Positioned(
+              top: 3,
+              right: 3,
+              child: Container(
+                width: 5,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: accent,
+                  shape: BoxShape.circle,
+                ),
+              ),
             ),
         ],
       ),

@@ -7,6 +7,7 @@ import '../../domain/entities/preset.dart';
 import '../../ui/home_page.dart';
 import '../state/editor_notifier.dart';
 import '../state/ir_notifier.dart';
+import '../state/scenes_notifier.dart';
 import '../state/preset_ops_notifier.dart';
 import '../widgets/backup_dialog.dart';
 import '../widgets/editor_bottom_bar.dart';
@@ -179,6 +180,8 @@ class _EditorPageState extends ConsumerState<EditorPage> {
     final ops = ref.watch(presetOpsProvider);
     final opsNotifier = ref.read(presetOpsProvider.notifier);
     final clip = ops.clipboard;
+    final scenes = ref.watch(scenesProvider);
+    final scenesNotifier = ref.read(scenesProvider.notifier);
     // Rebuild when the user IR names change (CAB model labels).
     ref.watch(irProvider);
     final irNotifier = ref.read(irProvider.notifier);
@@ -210,7 +213,12 @@ class _EditorPageState extends ConsumerState<EditorPage> {
             isBrowserOpen: state.isBrowserOpen,
             onSelectPatch: _selectPreset,
             onRenamePreset: notifier.renamePreset,
-            // Scene mode waits for the custom firmware (see kSceneNames).
+            onSelectScene: scenesNotifier.select,
+            onSaveScene: scenesNotifier.save,
+            onClearScene: scenesNotifier.clear,
+            activeScene: scenes.active,
+            filledScenes: scenes.scenes.keys.toSet(),
+            activeSceneModified: scenes.activeModified,
             onUndo: notifier.undo,
             onRedo: notifier.redo,
             onSave: _saveAll,

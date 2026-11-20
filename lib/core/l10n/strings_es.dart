@@ -28,6 +28,12 @@ const Map<String, String> stringsEs = <String, String>{
   'BACK TO EDITOR': 'VOLVER AL EDITOR',
   'NAM A2 / IR TOOLS': 'HERRAMIENTAS NAM A2 / IR',
   'FX200 STUDIO · CORTEX/AMPERO EDITOR': 'FX200 STUDIO · EDITOR',
+  'Scenes: click to apply (empty = store the current sound), right-click to save or clear':
+      'Escenas: clic para aplicar (vacía = guardar el sonido actual), clic '
+      'derecho para guardar o vaciar',
+  'Save the current sound in scene {0}':
+      'Guardar el sonido actual en la escena {0}',
+  'Clear scene {0}': 'Vaciar la escena {0}',
   'Scenes: not supported by the current FX200 firmware':
       'Escenas: no disponibles con el firmware actual de la FX200',
 
